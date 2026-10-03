@@ -1,20 +1,73 @@
 # Gestionador de archivos
 
-Aplicación de escritorio para analizar y organizar archivos, comenzando por bibliotecas de música. La primera versión permite escanear canciones, revisar repetidos y ordenar música por sus metadatos. La organización de videos, imágenes y documentos queda prevista para etapas posteriores; esos archivos no se modifican en esta versión.
+Aplicación de escritorio para ordenar archivos. La implementación actual está centrada en música; las carpetas para videos, imágenes, documentos y otras categorías forman parte del diseño futuro y todavía no se procesan.
+
+El lema de la aplicación es **“Tus carpetas ordenadas en un clic. Olvídate de limpiar a mano”.** Su identidad visual usa la mascota suministrada y una interfaz oscura con verde neón, cyan, ámbar y coral.
 
 ## Funciones actuales
 
 - Escanea una carpeta y sus subcarpetas para encontrar audio MP3, FLAC, M4A, AAC, OGG, WAV, WMA y OPUS.
-- Muestra canción, artista, álbum, género y duración; indica el avance del análisis con una barra y porcentaje.
+- Muestra canción, artista, álbum, género, formato y duración; indica el avance del análisis con una barra y porcentaje.
 - Distingue copias exactas mediante SHA-256 de posibles repetidos con artista, canción y álbum coincidentes.
-- Previsualiza la organización antes de confirmar. Puede crear la estructura `Carpeta elegida/Artista/Álbum/Canción.ext` y opcionalmente incluir el género.
-- Para copias exactas permite conservarlas, mover las copias adicionales a `Repetidos` o enviarlas a la Papelera de Windows.
+- Permite filtrar todas las canciones, repetidas y canciones con etiquetas ausentes.
+- Previsualiza la organización antes de confirmar y permite incluir el género como criterio opcional.
+- Para copias exactas permite conservarlas, mover las copias adicionales al árbol musical o enviarlas a la Papelera de Windows.
 - Informa los errores de lectura y organización en la interfaz.
-- Usa una interfaz oscura verde grisácea, con acentos verde lima y turquesa, y el icono de la aplicación.
 
-## Compatibilidad futura
+## Árbol de organización
 
-Las extensiones de video, imagen y documento ya están agrupadas en `app/file_types.py` para facilitar la incorporación de sus propios analizadores y organizadores. Por ahora solo la categoría de música está activa: escanear una carpeta no lee, organiza ni modifica los demás tipos de archivo.
+La música se organiza dentro de la carpeta elegida, con esta estructura predeterminada:
+
+```text
+Carpeta_elegida/
+└── Musica_y_Audio/
+    ├── Artistas/
+    │   ├── Nombre_Artista/
+    │   │   ├── Nombre_Album/
+    │   │   └── Canciones_Sueltas/
+    │   └── Artistas_Desconocidos/
+    │       └── Canciones_Sueltas/
+    └── Duplicados/
+```
+
+Las canciones sin álbum quedan en `Canciones_Sueltas`; las canciones sin artista se agrupan en `Artistas_Desconocidos`. Los duplicados que se mueven se guardan en `Musica_y_Audio\Duplicados`, que se excluye de análisis posteriores. Las opciones de género o de organización por artista/álbum pueden añadir o cambiar subcarpetas.
+
+## Categorías previstas
+
+El árbol completo está guardado en [`docs/estructura_archivos.txt`](docs/estructura_archivos.txt), a partir del documento de diseño. `app/file_types.py` registra extensiones para listas de reproducción, proyectos de edición, descargas incompletas, videos, subtítulos, imágenes, diseños, documentos, comprimidos, instaladores, código y datos. Por ahora solo la categoría **music** está activa: el resto de archivos no se lee, mueve ni elimina.
+
+```text
+Organizador_Archivos/
+├── Musica_y_Audio/
+│   ├── Artistas/
+│   ├── Listas_y_Proyectos/
+│   │   ├── Playlists/
+│   │   └── Proyectos_Edicion/
+│   ├── Duplicados/
+│   └── Archivos_No_Validos/
+│       ├── Corruptos_o_Danados/
+│       ├── Sin_Extension/
+│       └── Incompletos/
+├── Videos_y_Peliculas/
+│   ├── Clips_y_Videos/
+│   └── Guiones_y_Subtitulos/
+├── Imagenes_y_Disenos/
+│   ├── Fotos_e_Imagenes/
+│   ├── Vectores_y_Disenos/
+│   └── Capturas_de_Pantalla/
+├── Documentos_y_Libros/
+│   ├── PDF/
+│   ├── Texto_y_Notas/
+│   ├── Ofimatica/
+│   └── Libros_Electronicos/
+├── Comprimidos_e_Instaladores/
+│   ├── Archivos_ZIP_y_RAR/
+│   └── Instaladores/
+├── Codigo_y_Proyectos/
+│   ├── Scripts/
+│   └── Bases_de_Datos/
+└── Varios_Sin_Clasificar/
+```
 
 ## Instalar y abrir
 
@@ -68,7 +121,7 @@ Antes de distribuir el instalador, pruébalo en un Windows que no tenga Python i
 ## Alcance y precauciones
 
 - Actualmente solo se gestionan archivos de audio dentro de la carpeta elegida. Videos, documentos e imágenes quedan intactos.
-- La carpeta `Repetidos` no se vuelve a incluir al analizar la carpeta elegida.
+- `Musica_y_Audio\Duplicados` no se vuelve a incluir al analizar la carpeta elegida.
 - La detección identifica copias idénticas byte por byte, no canciones que suenen igual pero estén codificadas de forma distinta.
 - La organización mueve los archivos originales. Revisa la vista previa y conserva una copia de seguridad.
 

@@ -46,13 +46,32 @@ class ScanFolderTests(unittest.TestCase):
         self.assertEqual(result.songs, [])
         read_song.assert_not_called()
 
+    def test_music_duplicates_folder_is_not_scanned_again(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            duplicate = root / "Musica_y_Audio" / "Duplicados" / "copy.mp3"
+            duplicate.parent.mkdir(parents=True)
+            duplicate.touch()
+
+            with patch.object(scanner, "read_song") as read_song:
+                result = scanner.scan_folder(root)
+
+        self.assertEqual(result.songs, [])
+        read_song.assert_not_called()
+
     def test_music_is_active_and_other_file_categories_are_prepared(self):
         self.assertEqual(ACTIVE_FILE_CATEGORIES, frozenset({"music"}))
         self.assertEqual(category_for_extension(".mp3"), "music")
+        self.assertEqual(category_for_extension(".m3u"), "playlist")
+        self.assertEqual(category_for_extension(".flp"), "music_project")
         self.assertEqual(category_for_extension(".MP4"), "video")
         self.assertEqual(category_for_path(Path("photo.PNG")), "image")
         self.assertEqual(category_for_extension(".pdf"), "document")
-        self.assertIsNone(category_for_extension(".zip"))
+        self.assertEqual(category_for_extension(".crdownload"), "incomplete")
+        self.assertEqual(category_for_extension(".zip"), "archive_or_installer")
+        self.assertEqual(
+            category_for_extension(".unknown-extension"), None
+        )
 
     def test_scan_reports_determinate_progress_for_music_files(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

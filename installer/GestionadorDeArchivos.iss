@@ -38,8 +38,8 @@ Name: "desktopicon"; Description: "Crear un acceso directo en el Escritorio"; Gr
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{userdesktop}\Gestionador de archivos"; Filename: "{app}\GestionadorDeArchivos.exe"; Tasks: desktopicon
-Name: "{userprograms}\Gestionador de archivos\Gestionador de archivos"; Filename: "{app}\GestionadorDeArchivos.exe"
+Name: "{userdesktop}\Gestionador de archivos"; Filename: "{app}\GestionadorDeArchivos.exe"; IconFilename: "{app}\GestionadorDeArchivos.exe"; IconIndex: 0; Tasks: desktopicon
+Name: "{userprograms}\Gestionador de archivos\Gestionador de archivos"; Filename: "{app}\GestionadorDeArchivos.exe"; IconFilename: "{app}\GestionadorDeArchivos.exe"; IconIndex: 0
 
 [Run]
 Filename: "{app}\GestionadorDeArchivos.exe"; Description: "Iniciar Gestionador de archivos"; Flags: postinstall nowait skipifsilent

@@ -8,12 +8,13 @@ from app.organizer import (
     build_destination,
     organize,
     process_duplicates,
+    preview_organization,
     validate_organization,
 )
 
 
 class OrganizerTests(unittest.TestCase):
-    def test_default_destination_is_artist_album_inside_selected_folder(self):
+    def test_default_destination_follows_music_artist_album_tree(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "Mi Música"
             song = Song(
@@ -27,7 +28,38 @@ class OrganizerTests(unittest.TestCase):
 
         self.assertEqual(
             destination,
-            root / "Linkin Park" / "Meteora" / "Numb.mp3",
+            root / "Musica_y_Audio" / "Artistas" / "Linkin Park" / "Meteora" / "Numb.mp3",
+        )
+
+    def test_missing_album_songs_go_to_artist_loose_songs_folder(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            song = Song(
+                path=root / "single.mp3",
+                title="Single",
+                artist="Artist",
+                album="Unknown",
+            )
+
+            destination = build_destination(root, song)
+
+        self.assertEqual(
+            destination,
+            root / "Musica_y_Audio" / "Artistas" / "Artist"
+            / "Canciones_Sueltas" / "Single.mp3",
+        )
+
+    def test_unknown_artists_use_unknown_artist_tree_folder(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            song = Song(path=root / "untagged.mp3", title="Untagged")
+
+            destination = build_destination(root, song)
+
+        self.assertEqual(
+            destination,
+            root / "Musica_y_Audio" / "Artistas" / "Artistas_Desconocidos"
+            / "Canciones_Sueltas" / "Untagged.mp3",
         )
 
     def test_genre_can_be_added_before_artist_and_album(self):
@@ -45,7 +77,8 @@ class OrganizerTests(unittest.TestCase):
 
         self.assertEqual(
             destination,
-            root / "Rock" / "Linkin Park" / "Meteora" / "Numb.mp3",
+            root / "Musica_y_Audio" / "Rock" / "Artistas" / "Linkin Park"
+            / "Meteora" / "Numb.mp3",
         )
 
     def test_missing_tags_use_fallback_folders_and_preserve_filename(self):
@@ -57,7 +90,8 @@ class OrganizerTests(unittest.TestCase):
 
         self.assertEqual(
             destination,
-            root / "Otros" / "Sin álbum" / "untagged track.mp3",
+            root / "Musica_y_Audio" / "Artistas" / "Artistas_Desconocidos"
+            / "Canciones_Sueltas" / "untagged track.mp3",
         )
 
     def test_preview_reserves_unique_destinations_when_titles_collide(self):
@@ -87,8 +121,9 @@ class OrganizerTests(unittest.TestCase):
         destinations = [destination for _, destination in operations]
         self.assertEqual(len(destinations), 2)
         self.assertEqual(len(set(destinations)), 2)
-        self.assertEqual(destinations[0], root / "Artist" / "Album" / "Track.mp3")
-        self.assertEqual(destinations[1], root / "Artist" / "Album" / "Track (1).mp3")
+        base = root / "Musica_y_Audio" / "Artistas" / "Artist" / "Album"
+        self.assertEqual(destinations[0], base / "Track.mp3")
+        self.assertEqual(destinations[1], base / "Track (1).mp3")
 
     def test_missing_source_is_reported_before_moving(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -126,7 +161,12 @@ class OrganizerTests(unittest.TestCase):
             result = process_duplicates(root, [group], "move")
 
             self.assertTrue(first_path.exists())
-            self.assertTrue((root / "Repetidos" / second_path.name).exists())
+            self.assertTrue(
+                (
+                    root / "Musica_y_Audio" / "Duplicados"
+                    / second_path.name
+                ).exists()
+            )
 
         self.assertEqual(result.processed, [second_path])
         self.assertEqual(result.issues, [])

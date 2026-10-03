@@ -6,7 +6,7 @@ $python = Join-Path $projectRoot ".venv\Scripts\python.exe"
 $bundleDirectory = Join-Path $projectRoot "dist\GestionadorDeArchivos"
 $installerDirectory = Join-Path $projectRoot "dist\installer"
 $buildDirectory = Join-Path $projectRoot "build"
-$innoScript = Join-Path $projectRoot "installer\GestorDeMusica.iss"
+$innoScript = Join-Path $projectRoot "installer\GestionadorDeArchivos.iss"
 $iconFile = Join-Path $projectRoot "assets\gestionador_archivos.ico"
 $logoFile = Join-Path $projectRoot "assets\gestionador_archivos.png"
 
@@ -100,6 +100,7 @@ Set-Content -Path $versionInfoPath -Value $versionInfo -Encoding ascii
     --icon $iconFile `
     --version-file $versionInfoPath `
     --add-data "$logoFile;assets" `
+    --add-data "$iconFile;assets" `
     --collect-all customtkinter `
     --collect-all send2trash `
     --distpath (Join-Path $projectRoot "dist") `

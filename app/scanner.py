@@ -6,6 +6,7 @@ from typing import Callable
 from mutagen import File
 from .file_types import MUSIC_EXTENSIONS
 from .models import FileIssue, ScanResult, Song
+from .organizer import DUPLICATES_FOLDER, MUSIC_FOLDER
 
 
 SUPPORTED_EXTENSIONS = MUSIC_EXTENSIONS
@@ -80,8 +81,10 @@ def scan_folder(folder, progress_callback=None):
         )
 
     for directory, dirnames, filenames in os.walk(folder, onerror=record_walk_error):
-        if Path(directory).resolve() == folder.resolve():
-            dirnames[:] = [name for name in dirnames if name.casefold() != "repetidos"]
+        dirnames[:] = [
+            name for name in dirnames
+            if name.casefold() not in {"repetidos", DUPLICATES_FOLDER.casefold()}
+        ]
         for filename in filenames:
             path = Path(directory) / filename
             if path.suffix.casefold() in SUPPORTED_EXTENSIONS:

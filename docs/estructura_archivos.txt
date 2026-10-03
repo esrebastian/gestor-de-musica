@@ -1,0 +1,42 @@
+Organizador_Archivos/
+│
+├── Musica_y_Audio/
+│   ├── Artistas/
+│   │   ├── [Nombre_Artista]/
+│   │   │   ├── [Nombre_Album]/
+│   │   │   │   └── Canciones (MP3, FLAC, WAV, AAC, OGG, M4A)
+│   │   │   └── Canciones_Sueltas/
+│   │   └── Artistas_Desconocidos/      # Sin etiquetas ID3 o 'Unknown Artist'
+│   ├── Listas_y_Proyectos/
+│   │   ├── Playlists/                  # M3U, PLS, WPL
+│   │   └── Proyectos_Edicion/          # FLP, ALS, AUP3
+│   ├── Duplicados/                     # Archivos repetidos por hash/contenido
+│   └── Archivos_No_Validos/
+│       ├── Corruptos_o_Danados/        # Archivos que no se pueden reproducir o con header roto
+│       ├── Sin_Extension/              # Archivos de audio sin formato reconocible
+│       └── Incompletos/                # Descargas a medias (.crdownload, .part, .tmp)
+│
+├── Videos_y_Peliculas/
+│   ├── Clips_y_Videos/                 # MP4, MKV, AVI, MOV, WEBM
+│   └── Guiones_y_Subtitulos/           # SRT, VTT, ASS
+│
+├── Imagenes_y_Disenos/
+│   ├── Fotos_e_Imagenes/               # JPG, JPEG, PNG, WEBP, GIF
+│   ├── Vectores_y_Disenos/             # SVG, PSD, AI, FIG
+│   └── Capturas_de_Pantalla/           # Archivos con 'Screenshot' o 'Captura' en el nombre
+│
+├── Documentos_y_Libros/
+│   ├── PDF/                            # PDF
+│   ├── Texto_y_Notas/                  # TXT, MD, LOG
+│   ├── Ofimatica/                      # DOCX, XLSX, PPTX, CSV
+│   └── Libros_Electronicos/            # EPUB, MOBI
+│
+├── Comprimidos_e_Instaladores/
+│   ├── Archivos_ZIP_y_RAR/             # ZIP, RAR, 7Z, TAR, GZ
+│   └── Instaladores/                   # EXE, MSI, ISO, APK
+│
+├── Codigo_y_Proyectos/
+│   ├── Scripts/                        # PY, JS, TS, CPP, CS, KT, HTML, CSS
+│   └── Bases_de_Datos/                 # SQL, DB, JSON, XML, YAML
+│
+└── Varios_Sin_Clasificar/              # Archivos con extensiones desconocidas o sin categoría

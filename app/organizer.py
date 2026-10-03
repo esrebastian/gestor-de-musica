@@ -7,6 +7,13 @@ from send2trash import send2trash
 from .models import DuplicateActionResult, FileIssue, OrganizationResult
 
 
+MUSIC_FOLDER = "Musica_y_Audio"
+ARTISTS_FOLDER = "Artistas"
+UNKNOWN_ARTISTS_FOLDER = "Artistas_Desconocidos"
+LOOSE_SONGS_FOLDER = "Canciones_Sueltas"
+DUPLICATES_FOLDER = "Duplicados"
+
+
 def safe_name(text):
     invalid = '<>:"/\\|?*'
     result = str(text).strip()
@@ -31,13 +38,23 @@ def build_destination(
     organize_album=True,
     organize_genre=False,
 ):
-    folders = []
+    folders = [MUSIC_FOLDER]
     if organize_genre:
         folders.append(metadata_name(song.genre, "Otros"))
+
     if organize_artist:
-        folders.append(metadata_name(song.artist, "Otros"))
-    if organize_album:
-        folders.append(metadata_name(song.album, "Sin álbum"))
+        artist = metadata_name(song.artist, UNKNOWN_ARTISTS_FOLDER)
+        folders.extend((ARTISTS_FOLDER, artist))
+
+        album = metadata_name(song.album, "")
+        if organize_album and album:
+            folders.append(album)
+        else:
+            folders.append(LOOSE_SONGS_FOLDER)
+    elif organize_album:
+        album = metadata_name(song.album, "")
+        if album:
+            folders.append(album)
 
     title = str(song.title).strip()
     if not title or title.casefold() in {"desconocido", "unknown"}:
@@ -183,7 +200,7 @@ def process_duplicates(root, groups, action):
                 if not os.access(root, os.W_OK | os.X_OK):
                     raise PermissionError("No hay permiso para escribir en la carpeta elegida.")
 
-                destination_directory = Path(root) / "Repetidos"
+                destination_directory = Path(root) / MUSIC_FOLDER / DUPLICATES_FOLDER
                 destination_directory.mkdir(parents=True, exist_ok=True)
                 destination = destination_directory / source.name
                 counter = 1
