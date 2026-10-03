@@ -4,6 +4,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import scanner
+from app.file_types import (
+    ACTIVE_FILE_CATEGORIES,
+    category_for_extension,
+    category_for_path,
+)
 from app.models import Song
 
 
@@ -40,6 +45,43 @@ class ScanFolderTests(unittest.TestCase):
 
         self.assertEqual(result.songs, [])
         read_song.assert_not_called()
+
+    def test_music_is_active_and_other_file_categories_are_prepared(self):
+        self.assertEqual(ACTIVE_FILE_CATEGORIES, frozenset({"music"}))
+        self.assertEqual(category_for_extension(".mp3"), "music")
+        self.assertEqual(category_for_extension(".MP4"), "video")
+        self.assertEqual(category_for_path(Path("photo.PNG")), "image")
+        self.assertEqual(category_for_extension(".pdf"), "document")
+        self.assertIsNone(category_for_extension(".zip"))
+
+    def test_scan_reports_determinate_progress_for_music_files(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            first = root / "one.mp3"
+            second = root / "subfolder" / "two.flac"
+            second.parent.mkdir()
+            first.touch()
+            second.touch()
+            progress = []
+
+            with patch.object(
+                scanner,
+                "read_song",
+                side_effect=lambda path: Song(path=path),
+            ):
+                result = scanner.scan_folder(
+                    root,
+                    progress_callback=lambda phase, done, total: progress.append(
+                        (phase, done, total)
+                    ),
+                )
+
+        processing_progress = [item[1:] for item in progress if item[0] == "processing"]
+        self.assertEqual(len(result.songs), 2)
+        self.assertEqual(
+            processing_progress,
+            [(0, 2), (1, 2), (2, 2)],
+        )
 
     def test_possible_duplicates_require_matching_metadata_and_different_hash(self):
         songs = [

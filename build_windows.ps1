@@ -3,10 +3,12 @@ $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 $versionFile = Join-Path $projectRoot "VERSION"
 $python = Join-Path $projectRoot ".venv\Scripts\python.exe"
-$bundleDirectory = Join-Path $projectRoot "dist\GestorDeMusica"
+$bundleDirectory = Join-Path $projectRoot "dist\GestionadorDeArchivos"
 $installerDirectory = Join-Path $projectRoot "dist\installer"
 $buildDirectory = Join-Path $projectRoot "build"
 $innoScript = Join-Path $projectRoot "installer\GestorDeMusica.iss"
+$iconFile = Join-Path $projectRoot "assets\gestionador_archivos.ico"
+$logoFile = Join-Path $projectRoot "assets\gestionador_archivos.png"
 
 if (-not (Test-Path $versionFile)) {
     throw "No se encontró VERSION. Crea el archivo con una versión MAJOR.MINOR.PATCH."
@@ -22,8 +24,13 @@ if ($versionParts | Where-Object { $_ -gt 65535 }) {
     throw "Cada componente de VERSION debe ser menor o igual a 65535."
 }
 
+$missingAssets = @($iconFile, $logoFile) | Where-Object { -not (Test-Path $_) }
+if ($missingAssets.Count -gt 0) {
+    throw "Faltan recursos de la aplicación: $($missingAssets -join ', ')"
+}
+
 $fileVersion = ($versionParts + 0) -join ","
-$versionInfoPath = Join-Path $buildDirectory "GestorDeMusica.version.txt"
+$versionInfoPath = Join-Path $buildDirectory "GestionadorDeArchivos.version.txt"
 
 if (-not (Test-Path $python)) {
     throw "No se encontró .venv. Crea el entorno e instala requirements.txt antes de construir."
@@ -72,12 +79,12 @@ VSVersionInfo(
       StringTable(
         '040904B0',
         [
-          StringStruct('CompanyName', 'Gestor de Musica'),
-          StringStruct('FileDescription', 'Gestor de Musica'),
+          StringStruct('CompanyName', 'Gestionador de archivos'),
+          StringStruct('FileDescription', 'Gestionador de archivos'),
           StringStruct('FileVersion', '$appVersion'),
-          StringStruct('InternalName', 'GestorDeMusica'),
-          StringStruct('OriginalFilename', 'GestorDeMusica.exe'),
-          StringStruct('ProductName', 'Gestor de Musica'),
+          StringStruct('InternalName', 'GestionadorDeArchivos'),
+          StringStruct('OriginalFilename', 'GestionadorDeArchivos.exe'),
+          StringStruct('ProductName', 'Gestionador de archivos'),
           StringStruct('ProductVersion', '$appVersion')
         ]
       )
@@ -89,8 +96,10 @@ VSVersionInfo(
 Set-Content -Path $versionInfoPath -Value $versionInfo -Encoding ascii
 
 & $python -m PyInstaller --noconfirm --clean --windowed --onedir `
-    --name GestorDeMusica `
+    --name GestionadorDeArchivos `
+    --icon $iconFile `
     --version-file $versionInfoPath `
+    --add-data "$logoFile;assets" `
     --collect-all customtkinter `
     --collect-all send2trash `
     --distpath (Join-Path $projectRoot "dist") `
@@ -100,8 +109,9 @@ Set-Content -Path $versionInfoPath -Value $versionInfo -Encoding ascii
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller no pudo construir la aplicación." }
 
 New-Item -ItemType Directory -Path $installerDirectory -Force | Out-Null
-& $innoCompilerPath "/DSourceDir=$bundleDirectory" "/DOutputDir=$installerDirectory" "/DAppVersion=$appVersion" $innoScript
+& $innoCompilerPath "/DSourceDir=$bundleDirectory" "/DOutputDir=$installerDirectory" "/DAppVersion=$appVersion" "/DIconFile=$iconFile" $innoScript
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup no pudo crear el instalador." }
 
 Write-Host "Versión: $appVersion"
-Write-Host "Instalador creado: $installerDirectory\GestorDeMusica-Setup-$appVersion.exe"
+Write-Host "Ejecutable creado: $bundleDirectory\GestionadorDeArchivos.exe"
+Write-Host "Instalador creado: $installerDirectory\GestionadorDeArchivos-Setup-$appVersion.exe"

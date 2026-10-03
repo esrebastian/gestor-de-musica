@@ -1,5 +1,7 @@
+import sys
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
@@ -13,56 +15,135 @@ from .organizer import (
 )
 
 
-class MusicManagerApp(ctk.CTk):
+COLORS = {
+    "background": "#0B120E",
+    "surface": "#18251E",
+    "surface_alt": "#202F27",
+    "border": "#2B3A31",
+    "text": "#F3F6F4",
+    "muted": "#98A79E",
+    "lime": "#B8F34A",
+    "lime_hover": "#A5DC3C",
+    "teal": "#58BEB6",
+    "track": "#334139",
+    "selection": "#45613B",
+}
+
+
+def asset_path(filename):
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    return bundle_root / "assets" / filename
+
+
+class GestionadorArchivosApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Gestor de Música")
-        self.geometry("1000x620")
-        self.minsize(760, 480)
+        self.title("Gestionador de archivos")
+        self.geometry("1080x700")
+        self.minsize(780, 520)
+        self.configure(fg_color=COLORS["background"])
 
         self.folder = ""
         self.songs = []
         self.duplicates = []
         self.possible_duplicates = []
         self.issues = []
+        self._scan_running = False
+        self._last_progress_percent = None
 
         ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        ctk.set_default_color_theme("green")
+        self.set_application_icon()
 
         self.create_widgets()
 
+    def set_application_icon(self):
+        icon_path = asset_path("gestionador_archivos.png")
+        if icon_path.is_file():
+            self._application_icon = tk.PhotoImage(file=str(icon_path)).subsample(16, 16)
+            self.iconphoto(True, self._application_icon)
+
     def create_widgets(self):
-        title = ctk.CTkLabel(
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=24, pady=(20, 8))
+
+        logo_path = asset_path("gestionador_archivos.png")
+        if logo_path.is_file():
+            self._logo_image = tk.PhotoImage(file=str(logo_path)).subsample(16, 16)
+            ctk.CTkLabel(header, text="", image=self._logo_image).pack(
+                side="left", padx=(0, 14)
+            )
+
+        title_group = ctk.CTkFrame(header, fg_color="transparent")
+        title_group.pack(side="left", fill="y")
+        ctk.CTkLabel(
+            title_group,
+            text="Gestionador de archivos",
+            font=ctk.CTkFont(size=26, weight="bold"),
+            text_color=COLORS["text"],
+        ).pack(anchor="w", pady=(3, 0))
+        ctk.CTkLabel(
+            title_group,
+            text="Tu música, tus reglas",
+            font=ctk.CTkFont(size=14),
+            text_color=COLORS["lime"],
+        ).pack(anchor="w")
+
+        top = ctk.CTkFrame(
             self,
-            text="🎵 Gestor de Música",
-            font=ctk.CTkFont(size=28, weight="bold")
+            fg_color=COLORS["surface"],
+            border_color=COLORS["border"],
+            border_width=1,
         )
-        title.pack(pady=(20, 10))
+        top.pack(fill="x", padx=24, pady=(10, 8))
 
-        top = ctk.CTkFrame(self)
-        top.pack(fill="x", padx=20, pady=10)
-
-        self.folder_entry = ctk.CTkEntry(top, placeholder_text="Selecciona una carpeta...")
-        self.folder_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10)
-
-        choose_button = ctk.CTkButton(
-            top, text="Elegir carpeta", command=self.choose_folder
+        self.folder_entry = ctk.CTkEntry(
+            top,
+            placeholder_text="Selecciona una carpeta de música...",
+            fg_color=COLORS["surface_alt"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text"],
         )
-        choose_button.pack(side="left", padx=5)
+        self.folder_entry.pack(side="left", fill="x", expand=True, padx=(12, 8), pady=12)
 
-        scan_button = ctk.CTkButton(
-            top, text="Analizar", command=self.start_scan
+        self.choose_button = ctk.CTkButton(
+            top,
+            text="Elegir carpeta",
+            command=self.choose_folder,
+            fg_color=COLORS["teal"],
+            hover_color="#45A9A2",
+            text_color=COLORS["background"],
         )
-        scan_button.pack(side="left", padx=5)
+        self.choose_button.pack(side="left", padx=5)
+
+        self.scan_button = ctk.CTkButton(
+            top,
+            text="Analizar",
+            command=self.start_scan,
+            fg_color=COLORS["lime"],
+            hover_color=COLORS["lime_hover"],
+            text_color=COLORS["background"],
+        )
+        self.scan_button.pack(side="left", padx=5)
 
         duplicate_button = ctk.CTkButton(
-            top, text="Ver repetidas", command=self.show_duplicates
+            top,
+            text="Ver repetidas",
+            command=self.show_duplicates,
+            fg_color=COLORS["surface_alt"],
+            hover_color=COLORS["border"],
+            text_color=COLORS["text"],
         )
         duplicate_button.pack(side="left", padx=5)
 
         organize_button = ctk.CTkButton(
-            top, text="Organizar", command=self.organize_music
+            top,
+            text="Organizar",
+            command=self.organize_music,
+            fg_color=COLORS["lime"],
+            hover_color=COLORS["lime_hover"],
+            text_color=COLORS["background"],
         )
         organize_button.pack(side="left", padx=(5, 10))
 
@@ -70,7 +151,9 @@ class MusicManagerApp(ctk.CTk):
         status_frame.pack(fill="x", padx=25, pady=5)
 
         self.status = ctk.CTkLabel(
-            status_frame, text="Selecciona una carpeta para comenzar."
+            status_frame,
+            text="Selecciona una carpeta para comenzar.",
+            text_color=COLORS["muted"],
         )
         self.status.pack(side="left", fill="x", expand=True, anchor="w")
 
@@ -80,32 +163,40 @@ class MusicManagerApp(ctk.CTk):
             width=130,
             command=self.show_issues,
             state="disabled",
+            fg_color=COLORS["surface_alt"],
+            hover_color=COLORS["border"],
+            text_color=COLORS["text"],
         )
         self.issues_button.pack(side="right", padx=(10, 0))
 
-        table_frame = ctk.CTkFrame(self)
-        table_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        table_frame = ctk.CTkFrame(
+            self,
+            fg_color=COLORS["surface"],
+            border_color=COLORS["border"],
+            border_width=1,
+        )
+        table_frame.pack(fill="both", expand=True, padx=24, pady=10)
 
         table_style = ttk.Style(self)
         table_style.theme_use("clam")
         table_style.configure(
             "Treeview",
-            background="#202020",
-            fieldbackground="#202020",
-            foreground="#F2F2F2",
-            bordercolor="#353535",
+            background=COLORS["surface"],
+            fieldbackground=COLORS["surface"],
+            foreground=COLORS["text"],
+            bordercolor=COLORS["border"],
             rowheight=28,
         )
         table_style.configure(
             "Treeview.Heading",
-            background="#303030",
-            foreground="#FFFFFF",
+            background=COLORS["surface_alt"],
+            foreground=COLORS["text"],
             relief="flat",
         )
         table_style.map(
             "Treeview",
-            background=[("selected", "#1F6AA5")],
-            foreground=[("selected", "#FFFFFF")],
+            background=[("selected", COLORS["selection"])],
+            foreground=[("selected", COLORS["text"])],
         )
 
         columns = ("title", "artist", "album", "genre", "duration")
@@ -150,38 +241,59 @@ class MusicManagerApp(ctk.CTk):
         table_frame.grid_rowconfigure(0, weight=1)
         table_frame.grid_columnconfigure(0, weight=1)
 
-        self.progress = ctk.CTkProgressBar(self)
-        self.progress.pack(fill="x", padx=25, pady=(0, 20))
+        progress_frame = ctk.CTkFrame(self, fg_color="transparent")
+        progress_frame.pack(fill="x", padx=25, pady=(0, 18))
+        self.progress = ctk.CTkProgressBar(
+            progress_frame,
+            progress_color=COLORS["lime"],
+            fg_color=COLORS["track"],
+        )
+        self.progress.pack(side="left", fill="x", expand=True, padx=(0, 12))
         self.progress.set(0)
+        self.progress_percent = ctk.CTkLabel(
+            progress_frame,
+            text="0%",
+            width=48,
+            text_color=COLORS["lime"],
+            font=ctk.CTkFont(size=13, weight="bold"),
+        )
+        self.progress_percent.pack(side="right")
 
     def choose_folder(self):
-        folder = filedialog.askdirectory(title="Selecciona tu carpeta de música")
+        folder = filedialog.askdirectory(title="Selecciona una carpeta de música")
 
         if folder:
             self.folder = folder
             self.folder_entry.delete(0, tk.END)
             self.folder_entry.insert(0, folder)
-            self.status.configure(text="Carpeta seleccionada.")
+            self.status.configure(text="Carpeta seleccionada. Pulsa Analizar para comenzar.")
 
     def start_scan(self):
+        if self._scan_running:
+            return
         if not self.folder:
             messagebox.showwarning("Aviso", "Primero selecciona una carpeta.")
             return
 
+        self._scan_running = True
+        self._last_progress_percent = None
+        self.choose_button.configure(state="disabled")
+        self.scan_button.configure(state="disabled")
         self.progress.start()
-        self.status.configure(text="Analizando música...")
+        self.progress_percent.configure(text="—")
+        self.status.configure(text="Buscando archivos de música...")
         self.set_issues([])
         self.songs = []
         self.duplicates = []
         self.possible_duplicates = []
         self.clear_table()
 
-        thread = threading.Thread(target=self.scan, daemon=True)
+        thread = threading.Thread(target=self.scan, args=(self.folder,), daemon=True)
         thread.start()
 
-    def scan(self):
+    def scan(self, folder):
         try:
-            result = scan_folder(self.folder)
+            result = scan_folder(folder, progress_callback=self.report_scan_progress)
             duplicates = find_duplicates(result.songs)
             possible_duplicates = find_possible_duplicates(result.songs)
 
@@ -190,11 +302,38 @@ class MusicManagerApp(ctk.CTk):
                 lambda: self.scan_finished(result, duplicates, possible_duplicates),
             )
         except Exception as error:
-            self.after(0, lambda: self.scan_error(error))
+            self.after(0, lambda error=error: self.scan_error(error))
+
+    def report_scan_progress(self, phase, completed, total):
+        self.after(
+            0,
+            lambda: self.update_scan_progress(phase, completed, total),
+        )
+
+    def update_scan_progress(self, phase, completed, total):
+        if phase == "listing":
+            self.status.configure(text="Buscando archivos de música...")
+            self.progress_percent.configure(text="—")
+            return
+
+        if self._last_progress_percent is None:
+            self.progress.stop()
+            self.progress.set(0)
+            self._last_progress_percent = 0
+
+        percent = 100 if total == 0 else min(100, int(completed * 100 / total))
+        self.progress.set(percent / 100)
+        self.progress_percent.configure(text=f"{percent}%")
+        self.status.configure(text=f"Analizando música... {percent}%")
+        self._last_progress_percent = percent
 
     def scan_finished(self, result, duplicates, possible_duplicates):
         self.progress.stop()
         self.progress.set(1)
+        self.progress_percent.configure(text="100%")
+        self._scan_running = False
+        self.choose_button.configure(state="normal")
+        self.scan_button.configure(state="normal")
 
         self.songs = result.songs
         self.duplicates = duplicates
@@ -224,6 +363,10 @@ class MusicManagerApp(ctk.CTk):
     def scan_error(self, error):
         self.progress.stop()
         self.progress.set(0)
+        self.progress_percent.configure(text="0%")
+        self._scan_running = False
+        self.choose_button.configure(state="normal")
+        self.scan_button.configure(state="normal")
         messagebox.showerror("Error", str(error))
         self.status.configure(text="Ocurrió un error durante el análisis.")
 

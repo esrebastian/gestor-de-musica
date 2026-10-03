@@ -1,14 +1,15 @@
 import os
 from pathlib import Path
 import hashlib
+from typing import Callable
 
 from mutagen import File
+from .file_types import MUSIC_EXTENSIONS
 from .models import FileIssue, ScanResult, Song
 
 
-SUPPORTED_EXTENSIONS = {
-    ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".wav", ".wma", ".opus"
-}
+SUPPORTED_EXTENSIONS = MUSIC_EXTENSIONS
+ProgressCallback = Callable[[str, int, int], None]
 
 
 def get_tag(audio, names, default="Desconocido"):
@@ -59,7 +60,7 @@ def read_song(path):
     return song
 
 
-def scan_folder(folder):
+def scan_folder(folder, progress_callback=None):
     folder = Path(folder)
     if not folder.exists():
         raise FileNotFoundError(f"La carpeta no existe: {folder}")
@@ -68,6 +69,7 @@ def scan_folder(folder):
 
     songs = []
     issues = []
+    audio_paths = []
 
     def record_walk_error(error):
         issues.append(
@@ -82,12 +84,23 @@ def scan_folder(folder):
             dirnames[:] = [name for name in dirnames if name.casefold() != "repetidos"]
         for filename in filenames:
             path = Path(directory) / filename
-            if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                continue
-            try:
-                songs.append(read_song(path))
-            except Exception as error:
-                issues.append(FileIssue(path=path, message=str(error)))
+            if path.suffix.casefold() in SUPPORTED_EXTENSIONS:
+                audio_paths.append(path)
+
+        if progress_callback:
+            progress_callback("listing", len(audio_paths), 0)
+
+    total = len(audio_paths)
+    if progress_callback:
+        progress_callback("processing", 0, total)
+
+    for completed, path in enumerate(audio_paths, start=1):
+        try:
+            songs.append(read_song(path))
+        except Exception as error:
+            issues.append(FileIssue(path=path, message=str(error)))
+        if progress_callback:
+            progress_callback("processing", completed, total)
 
     songs.sort(key=lambda song: (song.artist.lower(), song.title.lower()))
     return ScanResult(songs=songs, issues=issues)

@@ -1,5 +1,5 @@
-from app.gui import MusicManagerApp
+from app.gui import GestionadorArchivosApp
 
 if __name__ == "__main__":
-    app = MusicManagerApp()
+    app = GestionadorArchivosApp()
     app.mainloop()
