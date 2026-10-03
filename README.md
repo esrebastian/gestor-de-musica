@@ -2,7 +2,7 @@
 
 Aplicación de escritorio para ordenar archivos. La implementación actual está centrada en música; las carpetas para videos, imágenes, documentos y otras categorías forman parte del diseño futuro y todavía no se procesan.
 
-El lema de la aplicación es **“Tus carpetas ordenadas en un clic. Olvídate de limpiar a mano”.** Su identidad visual usa la mascota suministrada y una interfaz oscura con verde neón, cyan, ámbar y coral.
+El lema de la aplicación es **“Tus carpetas ordenadas en un clic. Olvídate de limpiar a mano”.** Su identidad visual usa la mascota suministrada y la interfaz de referencia: fondo casi negro verdoso, paneles carbón, acentos verde lima y menta, duplicados ámbar e incidencias coral.
 
 ## Funciones actuales
 
