@@ -50,8 +50,16 @@ class GestionadorArchivosApp(ctk.CTk):
         super().__init__()
 
         self.title("Gestionador de archivos")
-        self.geometry("1080x780")
-        self.minsize(900, 640)
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        min_width = min(960, max(760, int(screen_width * 0.84)))
+        min_height = min(680, max(540, int(screen_height * 0.80)))
+        width = min(1360, max(min_width, int(screen_width * 0.90)))
+        height = min(900, max(min_height, int(screen_height * 0.88)))
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.minsize(min_width, min_height)
         self.configure(fg_color=COLORS["background"])
 
         self.folder = ""
@@ -113,7 +121,7 @@ class GestionadorArchivosApp(ctk.CTk):
         header_left.pack(side="left", padx=8, pady=4)
         self._logo_image = tk.PhotoImage(
             file=str(asset_path("gestionador_archivos.png"))
-        ).subsample(28, 28)
+        ).subsample(12, 12)
         tk.Label(
             header_left,
             image=self._logo_image,
@@ -126,24 +134,24 @@ class GestionadorArchivosApp(ctk.CTk):
         ctk.CTkLabel(
             brand,
             text="Gestionador de archivos",
-            font=ctk.CTkFont(size=11, weight="bold"),
+            font=ctk.CTkFont(size=13, weight="bold"),
             text_color=COLORS["text"],
         ).pack(anchor="w")
         ctk.CTkLabel(
             brand,
             text="Tus carpetas ordenadas en un clic. Olvídate de limpiar a mano",
-            font=ctk.CTkFont(size=8),
+            font=ctk.CTkFont(size=10),
             text_color=COLORS["cyan"],
         ).pack(anchor="w")
         ctk.CTkLabel(
             header,
-            text="Música  ·  Versión 1.3.0",
+            text="Música  ·  Versión 1.3.1",
             text_color=COLORS["cyan"],
             fg_color=COLORS["surface_alt"],
             corner_radius=12,
             padx=10,
             pady=4,
-            font=ctk.CTkFont(size=9),
+            font=ctk.CTkFont(size=11),
         ).pack(side="left", padx=(18, 6))
         self.active_directory = ctk.CTkLabel(
             header,
@@ -155,7 +163,7 @@ class GestionadorArchivosApp(ctk.CTk):
             corner_radius=14,
             padx=12,
             pady=6,
-            font=ctk.CTkFont(size=10),
+            font=ctk.CTkFont(size=12),
         )
         self.active_directory.pack(side="right", padx=12, pady=8)
 
@@ -172,7 +180,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color=COLORS["row"],
             border_color=COLORS["border"],
             text_color=COLORS["text"],
-            height=32,
+            height=36,
         )
         self.folder_entry.pack(side="left", fill="x", expand=True, padx=(8, 5), pady=6)
         self.choose_button = ctk.CTkButton(
@@ -182,7 +190,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color=COLORS["cyan_deep"],
             hover_color="#047857",
             text_color=COLORS["text"],
-            height=30,
+            height=34,
         )
         self.choose_button.pack(side="left", padx=3, pady=5)
 
@@ -194,7 +202,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color=COLORS["lime"],
             hover_color=COLORS["lime_hover"],
             text_color=COLORS["background"],
-            height=30,
+            height=34,
         )
         self.scan_button.pack(side="left", padx=3, pady=5)
         self.duplicates_button = ctk.CTkButton(
@@ -204,7 +212,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color=COLORS["surface_alt"],
             hover_color=COLORS["row_hover"],
             text_color=COLORS["amber"],
-            height=30,
+            height=34,
         )
         self.duplicates_button.pack(side="left", padx=3, pady=5)
         self.issues_button = ctk.CTkButton(
@@ -215,7 +223,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color=COLORS["surface_alt"],
             hover_color=COLORS["row_hover"],
             text_color=COLORS["coral"],
-            height=30,
+            height=34,
         )
         self.issues_button.pack(side="left", padx=3, pady=5)
         ctk.CTkButton(
@@ -225,7 +233,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color=COLORS["lime"],
             hover_color=COLORS["lime_hover"],
             text_color=COLORS["background"],
-            height=30,
+            height=34,
         ).pack(side="left", padx=3, pady=5)
 
         filter_row = ctk.CTkFrame(self, fg_color=COLORS["surface"], corner_radius=8)
@@ -243,7 +251,7 @@ class GestionadorArchivosApp(ctk.CTk):
                 command=lambda name=filter_name: self.set_song_filter(
                     "all" if name == "music" else name
                 ),
-                height=26,
+                height=30,
                 fg_color="transparent",
                 hover_color=COLORS["row_hover"],
                 text_color=COLORS["text"],
@@ -257,13 +265,13 @@ class GestionadorArchivosApp(ctk.CTk):
                 text_color=COLORS["subtle"],
                 fg_color="transparent",
                 padx=7,
-                font=ctk.CTkFont(size=10),
+                font=ctk.CTkFont(size=12),
             ).pack(side="left")
         self.search_entry = ctk.CTkEntry(
             filter_row,
             placeholder_text="⌕  Filtrar por artista, álbum...",
-            width=190,
-            height=26,
+            width=220,
+            height=30,
             fg_color=COLORS["row"],
             border_color=COLORS["border"],
             text_color=COLORS["text"],
@@ -283,7 +291,7 @@ class GestionadorArchivosApp(ctk.CTk):
 
         sidebar = ctk.CTkFrame(
             workspace,
-            width=166,
+            width=186,
             corner_radius=0,
             fg_color=COLORS["surface"],
         )
@@ -293,7 +301,7 @@ class GestionadorArchivosApp(ctk.CTk):
             sidebar,
             text="CATEGORÍAS",
             text_color=COLORS["muted"],
-            font=ctk.CTkFont(size=10, weight="bold"),
+            font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(anchor="w", padx=14, pady=(16, 7))
         self.library_count = ctk.CTkButton(
             sidebar,
@@ -303,7 +311,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color=COLORS["selection"],
             hover_color=COLORS["olive"],
             text_color=COLORS["lime"],
-            height=34,
+            height=38,
         )
         self.library_count.pack(fill="x", padx=7, pady=2)
         for label in ("♫  Música y Audio", "▸  Videos y Películas", "▧  Fotos e Imágenes", "▤  Documentos", "◉  Sin destinatario"):
@@ -315,7 +323,7 @@ class GestionadorArchivosApp(ctk.CTk):
                 fg_color="transparent",
                 hover_color=COLORS["row_hover"],
                 text_color=COLORS["muted"],
-                height=29,
+                height=32,
             ).pack(fill="x", padx=7, pady=1)
         ctk.CTkFrame(
             sidebar, height=1, fg_color=COLORS["border"]
@@ -325,7 +333,7 @@ class GestionadorArchivosApp(ctk.CTk):
             sidebar,
             text="DIAGNÓSTICO Y SALUD",
             text_color=COLORS["muted"],
-            font=ctk.CTkFont(size=10, weight="bold"),
+            font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(anchor="w", padx=12, pady=(5, 5))
         ctk.CTkButton(
             sidebar,
@@ -335,7 +343,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color="transparent",
             hover_color=COLORS["row_hover"],
             text_color=COLORS["amber"],
-            height=30,
+            height=34,
         ).pack(fill="x", padx=7, pady=1)
         ctk.CTkButton(
             sidebar,
@@ -345,7 +353,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color="transparent",
             hover_color=COLORS["row_hover"],
             text_color=COLORS["coral"],
-            height=30,
+            height=34,
         ).pack(fill="x", padx=7, pady=1)
         ctk.CTkButton(
             sidebar,
@@ -355,7 +363,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color="transparent",
             hover_color=COLORS["row_hover"],
             text_color=COLORS["muted"],
-            height=30,
+            height=34,
         ).pack(fill="x", padx=7, pady=1)
         ctk.CTkButton(
             sidebar,
@@ -365,7 +373,7 @@ class GestionadorArchivosApp(ctk.CTk):
             fg_color="transparent",
             hover_color=COLORS["row_hover"],
             text_color=COLORS["muted"],
-            height=30,
+            height=34,
         ).pack(fill="x", padx=7, pady=1)
         rule_card = ctk.CTkFrame(
             sidebar,
@@ -379,13 +387,13 @@ class GestionadorArchivosApp(ctk.CTk):
             rule_card,
             text="Regla de orden",
             text_color=COLORS["muted"],
-            font=ctk.CTkFont(size=9),
+            font=ctk.CTkFont(size=11),
         ).pack(anchor="w", padx=8, pady=(5, 1))
         ctk.CTkLabel(
             rule_card,
             text="{Artista}/{Álbum}/...",
             text_color=COLORS["cyan"],
-            font=ctk.CTkFont(size=9),
+            font=ctk.CTkFont(size=11),
         ).pack(anchor="w", padx=8, pady=(0, 5))
 
         table_panel = ctk.CTkFrame(workspace, fg_color=COLORS["background"])
@@ -402,7 +410,7 @@ class GestionadorArchivosApp(ctk.CTk):
             hover_color=COLORS["row_hover"],
             text_color=COLORS["cyan"],
             width=145,
-            height=28,
+            height=32,
         )
         self.select_all_button.pack(side="left", padx=(0, 4))
         self.table_summary = ctk.CTkLabel(
@@ -422,7 +430,7 @@ class GestionadorArchivosApp(ctk.CTk):
             values=["Artista", "Canción", "Álbum"],
             command=self.set_song_sort,
             width=100,
-            height=26,
+            height=30,
             fg_color=COLORS["surface"],
             button_color=COLORS["surface_alt"],
             button_hover_color=COLORS["row_hover"],
@@ -450,15 +458,15 @@ class GestionadorArchivosApp(ctk.CTk):
             fieldbackground=COLORS["row"],
             foreground=COLORS["text"],
             bordercolor=COLORS["border"],
-            rowheight=37,
-            font=("Segoe UI", 9),
+            rowheight=42,
+            font=("Segoe UI", 10),
         )
         table_style.configure(
             "Treeview.Heading",
             background=COLORS["surface"],
             foreground=COLORS["muted"],
             relief="flat",
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI", 10, "bold"),
         )
         table_style.map(
             "Treeview",
@@ -555,7 +563,7 @@ class GestionadorArchivosApp(ctk.CTk):
             hover_color=COLORS["row_hover"],
             text_color=COLORS["muted"],
             width=90,
-            height=26,
+            height=30,
         )
         self.log_button.pack(side="right", padx=(2, 8), pady=6)
         self.rules_button = ctk.CTkButton(
@@ -566,21 +574,21 @@ class GestionadorArchivosApp(ctk.CTk):
             hover_color=COLORS["row_hover"],
             text_color=COLORS["muted"],
             width=75,
-            height=26,
+            height=30,
         )
         self.rules_button.pack(side="right", padx=2, pady=6)
         self.progress = ctk.CTkProgressBar(
             footer,
             progress_color=COLORS["lime"],
             fg_color=COLORS["track"],
-            width=200,
+            width=220,
         )
         self.progress_percent = ctk.CTkLabel(
             footer,
             text="0%",
             width=42,
             text_color=COLORS["lime"],
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=ctk.CTkFont(size=14, weight="bold"),
         )
         self.progress_percent.pack(side="right", pady=10)
         self.progress.pack(side="right", padx=(8, 12), pady=13)
