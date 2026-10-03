@@ -37,8 +37,19 @@ def build_destination(
     organize_artist=True,
     organize_album=True,
     organize_genre=False,
+    organize_unknowns=False,
 ):
     folders = [MUSIC_FOLDER]
+    metadata_values = (song.title, song.artist, song.album, song.genre)
+    is_untagged = all(
+        not str(value).strip()
+        or str(value).strip().casefold() in {"desconocido", "unknown"}
+        for value in metadata_values
+    )
+    if organize_unknowns and is_untagged:
+        organize_artist = True
+        organize_album = False
+
     if organize_genre:
         folders.append(metadata_name(song.genre, "Otros"))
 
@@ -72,6 +83,7 @@ def preview_organization(
     organize_artist=True,
     organize_album=True,
     organize_genre=False,
+    organize_unknowns=False,
 ):
     operations = []
     reserved_destinations = set()
@@ -83,6 +95,7 @@ def preview_organization(
             organize_artist=organize_artist,
             organize_album=organize_album,
             organize_genre=organize_genre,
+            organize_unknowns=organize_unknowns,
         )
 
         if song.path.resolve() != destination.resolve():
@@ -110,6 +123,8 @@ def validate_organization(
     organize_artist=True,
     organize_album=True,
     organize_genre=False,
+    organize_unknowns=False,
+    copy_files=False,
 ):
     issues = []
 
@@ -119,6 +134,7 @@ def validate_organization(
         organize_artist=organize_artist,
         organize_album=organize_album,
         organize_genre=organize_genre,
+        organize_unknowns=organize_unknowns,
     ):
         if not source.is_file():
             issues.append(FileIssue(source, "El archivo ya no existe o no es accesible."))
@@ -126,7 +142,7 @@ def validate_organization(
 
         if not os.access(source, os.R_OK):
             issues.append(FileIssue(source, "No hay permiso de lectura sobre el archivo."))
-        if not os.access(source.parent, os.W_OK | os.X_OK):
+        if not copy_files and not os.access(source.parent, os.W_OK | os.X_OK):
             issues.append(FileIssue(source, "No hay permiso para retirar el archivo de su carpeta."))
 
         destination_parent = destination.parent
@@ -153,6 +169,8 @@ def organize(
     organize_artist=True,
     organize_album=True,
     organize_genre=False,
+    organize_unknowns=False,
+    copy_files=False,
 ):
     operations = preview_organization(
         root,
@@ -160,15 +178,18 @@ def organize(
         organize_artist=organize_artist,
         organize_album=organize_album,
         organize_genre=organize_genre,
+        organize_unknowns=organize_unknowns,
     )
     moved = []
+    copied = []
     issues = []
 
     for source, destination in operations:
+        final_destination = destination
+        copy_created_destination = False
         try:
             destination.parent.mkdir(parents=True, exist_ok=True)
 
-            final_destination = destination
             counter = 1
 
             while final_destination.exists():
@@ -177,12 +198,29 @@ def organize(
                 )
                 counter += 1
 
-            shutil.move(str(source), str(final_destination))
-            moved.append((source, final_destination))
+            if copy_files:
+                with source.open("rb") as source_file:
+                    with final_destination.open("xb") as destination_file:
+                        copy_created_destination = True
+                        shutil.copyfileobj(source_file, destination_file)
+                shutil.copystat(source, final_destination)
+                copied.append((source, final_destination))
+            else:
+                shutil.move(str(source), str(final_destination))
+                moved.append((source, final_destination))
         except OSError as error:
-            issues.append(FileIssue(path=source, message=str(error)))
+            message = str(error)
+            if copy_created_destination:
+                try:
+                    final_destination.unlink()
+                except OSError as cleanup_error:
+                    message += (
+                        "; además, no se pudo retirar la copia incompleta: "
+                        f"{cleanup_error}"
+                    )
+            issues.append(FileIssue(path=source, message=message))
 
-    return OrganizationResult(moved=moved, issues=issues)
+    return OrganizationResult(moved=moved, issues=issues, copied=copied)
 
 
 def process_duplicates(root, groups, action):

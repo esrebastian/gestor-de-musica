@@ -11,6 +11,8 @@ El lema de la aplicación es **“Tus carpetas ordenadas en un clic. Olvídate d
 - Distingue copias exactas mediante SHA-256 de posibles repetidos con artista, canción y álbum coincidentes.
 - Permite filtrar todas las canciones, repetidas y canciones con etiquetas ausentes.
 - Previsualiza la organización antes de confirmar y permite incluir el género como criterio opcional.
+- Ofrece simulación sin cambios y modo seguro de copia, que conserva intactos los originales.
+- Envía las canciones sin metadatos a la carpeta de artistas desconocidos cuando se activa esa regla.
 - Para copias exactas permite conservarlas, mover las copias adicionales al árbol musical o enviarlas a la Papelera de Windows.
 - Informa los errores de lectura y organización en la interfaz.
 

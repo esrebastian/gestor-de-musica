@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, call, patch
 
 from app.models import Song
 from app.organizer import (
@@ -94,6 +94,19 @@ class OrganizerTests(unittest.TestCase):
             / "Canciones_Sueltas" / "untagged track.mp3",
         )
 
+    def test_organize_unknowns_sends_untagged_song_to_safe_artist_folder(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            song = Song(path=root / "untagged track.mp3")
+
+            destination = build_destination(root, song, organize_unknowns=True)
+
+        self.assertEqual(
+            destination,
+            root / "Musica_y_Audio" / "Artistas" / "Artistas_Desconocidos"
+            / "Canciones_Sueltas" / "untagged track.mp3",
+        )
+
     def test_preview_reserves_unique_destinations_when_titles_collide(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -148,6 +161,72 @@ class OrganizerTests(unittest.TestCase):
         self.assertEqual(result.moved, [])
         self.assertEqual(len(result.issues), 1)
         self.assertIn("access denied", result.issues[0].message)
+
+    def test_copy_mode_preserves_source_and_copies_file_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "Incoming" / "track.mp3"
+            source.parent.mkdir()
+            source.write_bytes(b"audio")
+            song = Song(path=source, title="Track", artist="Artist", album="Album")
+
+            result = organize(root, [song], copy_files=True)
+
+            destination = (
+                root / "Musica_y_Audio" / "Artistas" / "Artist" / "Album" / "Track.mp3"
+            )
+            self.assertTrue(source.is_file())
+            self.assertTrue(destination.is_file())
+            self.assertEqual(source.read_bytes(), destination.read_bytes())
+
+        self.assertEqual(result.moved, [])
+        self.assertEqual(result.copied, [(source, destination)])
+        self.assertEqual(result.issues, [])
+
+    def test_copy_mode_validation_does_not_require_source_directory_write_access(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "Incoming" / "track.mp3"
+            source.parent.mkdir()
+            source.touch()
+            song = Song(path=source, title="Track", artist="Artist", album="Album")
+
+            with patch("app.organizer.os.access", return_value=True) as access:
+                issues = validate_organization(root, [song], copy_files=True)
+
+        self.assertEqual(issues, [])
+        self.assertNotIn(
+            call(source.parent, ANY),
+            access.call_args_list,
+        )
+
+    def test_copy_mode_removes_incomplete_destination_when_copy_fails(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "Incoming" / "track.mp3"
+            source.parent.mkdir()
+            source.write_bytes(b"audio")
+            song = Song(path=source, title="Track", artist="Artist", album="Album")
+            destination = (
+                root / "Musica_y_Audio" / "Artistas" / "Artist" / "Album" / "Track.mp3"
+            )
+
+            def write_partial_file(_source, destination_file):
+                destination_file.write(b"partial")
+                raise OSError("disk full")
+
+            with patch(
+                "app.organizer.shutil.copyfileobj",
+                side_effect=write_partial_file,
+            ):
+                result = organize(root, [song], copy_files=True)
+
+            self.assertTrue(source.is_file())
+            self.assertFalse(destination.exists())
+
+        self.assertEqual(result.copied, [])
+        self.assertEqual(len(result.issues), 1)
+        self.assertIn("disk full", result.issues[0].message)
 
     def test_duplicate_move_preserves_one_copy_and_moves_extras(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

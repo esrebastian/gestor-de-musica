@@ -145,7 +145,7 @@ class GestionadorArchivosApp(ctk.CTk):
         ).pack(anchor="w")
         ctk.CTkLabel(
             header,
-            text="Música  ·  Versión 1.3.1",
+            text="Música  ·  Versión 1.3.2",
             text_color=COLORS["cyan"],
             fg_color=COLORS["surface_alt"],
             corner_radius=12,
@@ -1046,7 +1046,13 @@ class GestionadorArchivosApp(ctk.CTk):
         if options is None:
             return
 
-        operations = preview_organization(self.folder, selected_songs, **options)
+        self._preview_copy_mode = options["copy_files"]
+        preview_options = {
+            key: value for key, value in options.items() if key != "copy_files"
+        }
+        operations = preview_organization(
+            self.folder, selected_songs, **preview_options
+        )
 
         if not operations:
             messagebox.showinfo(
@@ -1063,7 +1069,7 @@ class GestionadorArchivosApp(ctk.CTk):
             )
             messagebox.showwarning(
                 "No se puede organizar",
-                "Se detectaron problemas de acceso. No se movió ningún archivo. "
+                "Se detectaron problemas de acceso. No se procesó ningún archivo. "
                 "Consulta 'Ver incidencias'."
             )
             return
@@ -1074,25 +1080,26 @@ class GestionadorArchivosApp(ctk.CTk):
         try:
             result = organize(self.folder, selected_songs, **options)
             self.set_issues(result.issues)
+            completed = len(result.copied) + len(result.moved)
 
             if result.issues:
                 self.status.configure(
-                    text=f"Se movieron {len(result.moved)} archivos; "
-                         f"{len(result.issues)} no se pudieron mover."
+                    text=f"Se procesaron {completed} archivos; "
+                         f"{len(result.issues)} no se pudieron completar."
                 )
                 messagebox.showwarning(
                     "Organización parcial",
-                    f"Se movieron {len(result.moved)} archivos y "
+                    f"Se procesaron {completed} archivos y "
                     f"{len(result.issues)} fallaron. Consulta 'Ver incidencias'."
                 )
                 self.show_issues()
             else:
                 messagebox.showinfo(
                     "Completado",
-                    f"Se organizaron {len(result.moved)} archivos."
+                    f"Se organizaron {completed} archivos."
                 )
 
-            if result.moved:
+            if result.moved or result.copied:
                 self.start_scan()
         except Exception as error:
             messagebox.showerror("Error", f"No se pudo organizar:\n{error}")
@@ -1107,7 +1114,11 @@ class GestionadorArchivosApp(ctk.CTk):
 
         heading = ctk.CTkLabel(
             window,
-            text=f"SE VAN A ORGANIZAR {len(operations)} CANCIONES",
+            text=(
+                f"SE VAN A COPIAR {len(operations)} CANCIONES"
+                if getattr(self, "_preview_copy_mode", False)
+                else f"SE VAN A ORGANIZAR {len(operations)} CANCIONES"
+            ),
             font=ctk.CTkFont(size=16, weight="bold"),
         )
         heading.pack(anchor="w", padx=20, pady=(18, 10))
@@ -1169,7 +1180,11 @@ class GestionadorArchivosApp(ctk.CTk):
 
         continue_button = ctk.CTkButton(
             buttons,
-            text="Continuar",
+            text=(
+                "Copiar y continuar"
+                if getattr(self, "_preview_copy_mode", False)
+                else "Continuar"
+            ),
             command=lambda: self._confirm_preview(window, result),
         )
         continue_button.pack(side="right")
@@ -1181,61 +1196,531 @@ class GestionadorArchivosApp(ctk.CTk):
     def choose_organization_options(self):
         window = ctk.CTkToplevel(self)
         window.title("Formato de organización")
-        window.geometry("420x300")
-        window.resizable(False, False)
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        width = min(1080, max(820, int(screen_width * 0.76)))
+        height = min(920, max(680, int(screen_height * 0.88)))
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+        window.geometry(f"{width}x{height}+{x}+{y}")
+        window.minsize(min(width, 820), min(height, 680))
         window.transient(self)
         self.set_window_icon(window)
 
-        ctk.CTkLabel(
+        selected_songs = [
+            song for song in self.songs if song.path in self.selected_song_paths
+        ] or self.songs
+        criteria_modes = {
+            "Artista / Álbum (Recomendado)": {
+                "organize_artist": True,
+                "organize_album": True,
+                "organize_genre": False,
+            },
+            "Género / Artista / Álbum": {
+                "organize_artist": True,
+                "organize_album": True,
+                "organize_genre": True,
+            },
+            "Solo artista": {
+                "organize_artist": True,
+                "organize_album": False,
+                "organize_genre": False,
+            },
+            "Solo álbum": {
+                "organize_artist": False,
+                "organize_album": True,
+                "organize_genre": False,
+            },
+            "Solo género": {
+                "organize_artist": False,
+                "organize_album": False,
+                "organize_genre": True,
+            },
+            "Género / Artista": {
+                "organize_artist": True,
+                "organize_album": False,
+                "organize_genre": True,
+            },
+            "Género / Álbum": {
+                "organize_artist": False,
+                "organize_album": True,
+                "organize_genre": True,
+            },
+        }
+        mode_var = tk.StringVar(value="Universal por categorías")
+        criteria_var = tk.StringVar(value="Artista / Álbum (Recomendado)")
+        unknown_var = tk.BooleanVar(value=True)
+        copy_var = tk.BooleanVar(value=False)
+
+        header = ctk.CTkFrame(
             window,
-            text="Organizar la música por",
-            font=ctk.CTkFont(size=18, weight="bold"),
-        ).pack(anchor="w", padx=22, pady=(22, 12))
+            fg_color=COLORS["surface_alt"],
+            corner_radius=0,
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        header.pack(fill="x")
+        header_icon = tk.PhotoImage(
+            file=str(asset_path("gestionador_archivos.png"))
+        ).subsample(16, 16)
+        window._organization_icon = header_icon
+        tk.Label(
+            header,
+            image=header_icon,
+            bg=COLORS["surface_alt"],
+            bd=0,
+            highlightthickness=0,
+        ).pack(side="left", padx=(18, 10), pady=12)
+        title_block = ctk.CTkFrame(header, fg_color="transparent")
+        title_block.pack(side="left", fill="y", pady=10)
+        title_line = ctk.CTkFrame(title_block, fg_color="transparent")
+        title_line.pack(anchor="w")
+        ctk.CTkLabel(
+            title_line,
+            text="Formato de Organización",
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(side="left")
+        ctk.CTkLabel(
+            title_line,
+            text="Reglas v3.0",
+            text_color=COLORS["cyan"],
+            fg_color=COLORS["selection"],
+            corner_radius=10,
+            padx=8,
+            pady=2,
+            font=ctk.CTkFont(size=10),
+        ).pack(side="left", padx=9)
+        ctk.CTkLabel(
+            title_block,
+            text=(
+                "Configura el orden de "
+                f"{len(selected_songs):,} canciones seleccionadas"
+            ),
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=11),
+        ).pack(anchor="w", pady=(2, 0))
 
-        artist_var = tk.BooleanVar(value=True)
-        album_var = tk.BooleanVar(value=True)
-        genre_var = tk.BooleanVar(value=False)
+        content = ctk.CTkScrollableFrame(
+            window,
+            fg_color=COLORS["surface"],
+            scrollbar_button_color=COLORS["border"],
+            scrollbar_button_hover_color=COLORS["muted"],
+        )
+        content.pack(fill="both", expand=True, padx=0, pady=0)
 
-        ctk.CTkCheckBox(window, text="Artista", variable=artist_var).pack(
-            anchor="w", padx=24, pady=7
+        def section_label(parent, text):
+            ctk.CTkLabel(
+                parent,
+                text=text.upper(),
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=11, weight="bold"),
+            ).pack(anchor="w", pady=(0, 8))
+
+        modes_section = ctk.CTkFrame(content, fg_color="transparent")
+        modes_section.pack(fill="x", padx=20, pady=(16, 12))
+        section_label(modes_section, "Modo de organización principal")
+        mode_cards = ctk.CTkFrame(modes_section, fg_color="transparent")
+        mode_cards.pack(fill="x")
+        mode_cards.grid_columnconfigure((0, 1), weight=1, uniform="mode")
+
+        universal_card = ctk.CTkFrame(
+            mode_cards,
+            fg_color=COLORS["surface_alt"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["lime"],
         )
-        ctk.CTkCheckBox(window, text="Álbum", variable=album_var).pack(
-            anchor="w", padx=24, pady=7
+        universal_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        ctk.CTkRadioButton(
+            universal_card,
+            text="Universal por categorías",
+            variable=mode_var,
+            value="Universal por categorías",
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=12, pady=(10, 2))
+        ctk.CTkLabel(
+            universal_card,
+            text="Organiza la música según metadatos y reglas de seguridad.",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=10),
+            wraplength=390,
+            justify="left",
+        ).pack(anchor="w", padx=38, pady=(0, 10))
+
+        extension_card = ctk.CTkFrame(
+            mode_cards,
+            fg_color=COLORS["surface_alt"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border"],
         )
-        ctk.CTkCheckBox(window, text="Género", variable=genre_var).pack(
-            anchor="w", padx=24, pady=7
+        extension_card.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+        ctk.CTkRadioButton(
+            extension_card,
+            text="Personalizado por extensión",
+            variable=mode_var,
+            value="Personalizado por extensión",
+            state="disabled",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=12, pady=(10, 2))
+        ctk.CTkLabel(
+            extension_card,
+            text="Disponible más adelante para imágenes, documentos y videos.",
+            text_color=COLORS["subtle"],
+            font=ctk.CTkFont(size=10),
+            wraplength=390,
+            justify="left",
+        ).pack(anchor="w", padx=38, pady=(0, 10))
+
+        criteria_section = ctk.CTkFrame(
+            content,
+            fg_color=COLORS["surface_alt"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border"],
         )
+        criteria_section.pack(fill="x", padx=20, pady=8)
+        criteria_heading = ctk.CTkFrame(
+            criteria_section, fg_color="transparent"
+        )
+        criteria_heading.pack(fill="x", padx=14, pady=(12, 8))
+        ctk.CTkLabel(
+            criteria_heading,
+            text="♫  CRITERIOS ESPECÍFICOS POR CATEGORÍA",
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=11, weight="bold"),
+        ).pack(side="left")
+        ctk.CTkLabel(
+            criteria_heading,
+            text=f"1 activa · {len(selected_songs):,} canciones",
+            text_color=COLORS["cyan"],
+            font=ctk.CTkFont(size=10),
+        ).pack(side="right")
+        ctk.CTkFrame(
+            criteria_section, height=1, fg_color=COLORS["border"]
+        ).pack(fill="x", padx=12, pady=(0, 8))
+
+        category_rows = (
+            ("♫", "Música y Audio", f"{len(self.songs):,} pistas", True),
+            ("▧", "Fotos e Imágenes", "Preparada para una etapa futura", False),
+            ("▤", "Documentos", "Preparada para una etapa futura", False),
+            ("▶", "Videos y Películas", "Preparada para una etapa futura", False),
+            ("◇", "Otros / Huérfanos", "No se clasifica todavía", False),
+        )
+        for icon, label, count, active in category_rows:
+            row = ctk.CTkFrame(
+                criteria_section,
+                fg_color=COLORS["row"],
+                corner_radius=8,
+                border_width=1,
+                border_color=COLORS["border"],
+            )
+            row.pack(fill="x", padx=12, pady=4)
+            category_info = ctk.CTkFrame(row, fg_color="transparent")
+            category_info.pack(side="left", fill="x", expand=True, padx=9, pady=7)
+            ctk.CTkLabel(
+                category_info,
+                text=icon,
+                text_color=COLORS["cyan"] if active else COLORS["subtle"],
+                font=ctk.CTkFont(size=16, weight="bold"),
+                width=26,
+            ).pack(side="left", padx=(0, 8))
+            category_names = ctk.CTkFrame(
+                category_info, fg_color="transparent"
+            )
+            category_names.pack(side="left", anchor="w")
+            ctk.CTkLabel(
+                category_names,
+                text=label,
+                text_color=COLORS["text"] if active else COLORS["muted"],
+                font=ctk.CTkFont(size=11, weight="bold"),
+            ).pack(anchor="w")
+            ctk.CTkLabel(
+                category_names,
+                text=count,
+                text_color=COLORS["subtle"],
+                font=ctk.CTkFont(size=9),
+            ).pack(anchor="w")
+            if active:
+                ctk.CTkOptionMenu(
+                    row,
+                    values=list(criteria_modes),
+                    variable=criteria_var,
+                    width=340,
+                    height=34,
+                    fg_color=COLORS["surface"],
+                    button_color=COLORS["surface"],
+                    button_hover_color=COLORS["row_hover"],
+                    text_color=COLORS["text"],
+                    font=ctk.CTkFont(size=11),
+                    dropdown_font=ctk.CTkFont(size=11),
+                ).pack(side="right", padx=10, pady=7)
+            else:
+                ctk.CTkLabel(
+                    row,
+                    text="No activa",
+                    text_color=COLORS["subtle"],
+                    fg_color=COLORS["surface"],
+                    corner_radius=8,
+                    padx=12,
+                    pady=8,
+                    font=ctk.CTkFont(size=10),
+                ).pack(side="right", padx=10, pady=7)
+
+        safety_section = ctk.CTkFrame(content, fg_color="transparent")
+        safety_section.pack(fill="x", padx=20, pady=(12, 8))
+        section_label(safety_section, "Reglas de seguridad y limpieza")
+        safety_cards = ctk.CTkFrame(safety_section, fg_color="transparent")
+        safety_cards.pack(fill="x")
+        safety_cards.grid_columnconfigure((0, 1, 2), weight=1, uniform="safety")
+
+        def add_safety_card(column, title, description, variable, state="normal"):
+            card = ctk.CTkFrame(
+                safety_cards,
+                fg_color=COLORS["surface_alt"],
+                corner_radius=8,
+                border_width=1,
+                border_color=COLORS["border"],
+            )
+            card.grid(row=0, column=column, sticky="nsew", padx=4)
+            ctk.CTkCheckBox(
+                card,
+                text=title,
+                variable=variable,
+                state=state,
+                text_color=COLORS["text"] if state == "normal" else COLORS["muted"],
+                font=ctk.CTkFont(size=11, weight="bold"),
+                checkbox_width=17,
+                checkbox_height=17,
+            ).pack(anchor="w", padx=9, pady=(10, 4))
+            ctk.CTkLabel(
+                card,
+                text=description,
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=9),
+                wraplength=220,
+                justify="left",
+            ).pack(anchor="w", padx=31, pady=(0, 10))
+
+        add_safety_card(
+            0,
+            "Sin etiquetas a Huérfanos",
+            "Las canciones sin metadatos se agrupan en Artistas desconocidos.",
+            unknown_var,
+        )
+        normalized_var = tk.BooleanVar(value=True)
+        add_safety_card(
+            1,
+            "Normalizar nombres",
+            "Protección activa: limpia caracteres no válidos para las rutas.",
+            normalized_var,
+            state="disabled",
+        )
+        add_safety_card(
+            2,
+            "Modo seguro (Copiar)",
+            "Copia al destino y conserva intactos los archivos originales.",
+            copy_var,
+        )
+
+        preview_section = ctk.CTkFrame(content, fg_color="transparent")
+        preview_section.pack(fill="x", padx=20, pady=(10, 14))
+        preview_heading = ctk.CTkFrame(
+            preview_section, fg_color="transparent"
+        )
+        preview_heading.pack(fill="x", pady=(0, 6))
+        ctk.CTkLabel(
+            preview_heading,
+            text="▣  ESTRUCTURA RESULTANTE ESTIMADA",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=11, weight="bold"),
+        ).pack(side="left")
+        ctk.CTkLabel(
+            preview_heading,
+            text="EN VIVO",
+            text_color=COLORS["lime"],
+            fg_color=COLORS["selection"],
+            corner_radius=8,
+            padx=8,
+            pady=2,
+            font=ctk.CTkFont(size=9, weight="bold"),
+        ).pack(side="left", padx=8)
+        ctk.CTkLabel(
+            preview_heading,
+            text=f"Ruta base: {self.folder}",
+            text_color=COLORS["cyan"],
+            font=ctk.CTkFont(size=9),
+        ).pack(side="right")
+        preview_box = ctk.CTkTextbox(
+            preview_section,
+            height=128,
+            fg_color=COLORS["row"],
+            border_width=1,
+            border_color=COLORS["border"],
+            text_color=COLORS["text"],
+            font=("Consolas", 10),
+            wrap="none",
+        )
+        preview_box.pack(fill="x")
+        preview_summary = ctk.CTkLabel(
+            preview_section,
+            text="",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=9),
+            anchor="w",
+        )
+        preview_summary.pack(fill="x", pady=(5, 0))
+
+        def current_options():
+            options = dict(criteria_modes[criteria_var.get()])
+            options["organize_unknowns"] = unknown_var.get()
+            options["copy_files"] = copy_var.get()
+            return options
+
+        def update_preview():
+            options = current_options()
+            preview_options = {
+                key: value for key, value in options.items() if key != "copy_files"
+            }
+            operations = preview_organization(
+                self.folder, selected_songs, **preview_options
+            )
+            preview_box.configure(state="normal")
+            preview_box.delete("1.0", "end")
+            if not operations:
+                preview_box.insert(
+                    "end",
+                    "No hay cambios pendientes con las reglas seleccionadas.",
+                )
+            else:
+                for source, destination in operations[:5]:
+                    relative = destination.relative_to(self.folder)
+                    action = "COPIAR" if options["copy_files"] else "MOVER"
+                    preview_box.insert(
+                        "end", f"{action:<6} {source.name}\n       └── {relative}\n"
+                    )
+                if len(operations) > 5:
+                    preview_box.insert(
+                        "end", f"... y {len(operations) - 5:,} canciones más."
+                    )
+            preview_box.configure(state="disabled")
+            action_word = "copiarán" if options["copy_files"] else "organizarán"
+            preview_summary.configure(
+                text=(
+                    f"Vista previa para {len(operations):,} canciones que se "
+                    f"{action_word}; no se modificará ningún archivo todavía."
+                )
+            )
+
+        criteria_var.trace_add("write", lambda *_: update_preview())
+        unknown_var.trace_add("write", lambda *_: update_preview())
+        copy_var.trace_add("write", lambda *_: update_preview())
+        update_preview()
 
         result = {"options": None}
-        buttons = ctk.CTkFrame(window, fg_color="transparent")
-        buttons.pack(fill="x", padx=20, pady=(20, 16))
-        ctk.CTkButton(
-            buttons,
-            text="Cancelar",
-            fg_color="transparent",
+        footer = ctk.CTkFrame(
+            window,
+            fg_color=COLORS["surface_alt"],
+            corner_radius=0,
             border_width=1,
-            command=window.destroy,
-        ).pack(side="left")
+            border_color=COLORS["border"],
+        )
+        footer.pack(fill="x", side="bottom")
+        ctk.CTkButton(
+            footer,
+            text="↻  Restablecer valores por defecto",
+            fg_color="transparent",
+            hover_color=COLORS["row_hover"],
+            text_color=COLORS["muted"],
+            command=lambda: (
+                criteria_var.set("Artista / Álbum (Recomendado)"),
+                unknown_var.set(True),
+                copy_var.set(False),
+                update_preview(),
+            ),
+        ).pack(side="left", padx=10, pady=10)
 
         def continue_to_preview():
-            if not (artist_var.get() or album_var.get() or genre_var.get()):
-                messagebox.showwarning(
-                    "Formato incompleto",
-                    "Selecciona al menos un criterio de organización.",
-                    parent=window,
-                )
-                return
-
-            result["options"] = {
-                "organize_artist": artist_var.get(),
-                "organize_album": album_var.get(),
-                "organize_genre": genre_var.get(),
-            }
+            result["options"] = current_options()
+            self._preview_copy_mode = copy_var.get()
             window.destroy()
 
+        def simulate_organization():
+            options = current_options()
+            preview_options = {
+                key: value for key, value in options.items() if key != "copy_files"
+            }
+            operations = preview_organization(
+                self.folder, selected_songs, **preview_options
+            )
+            simulation = ctk.CTkToplevel(window)
+            simulation.title("Simulación de organización")
+            simulation.geometry("760x480")
+            simulation.minsize(560, 340)
+            simulation.transient(window)
+            self.set_window_icon(simulation)
+            ctk.CTkLabel(
+                simulation,
+                text=f"SIMULACIÓN · {len(operations):,} ARCHIVOS",
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color=COLORS["cyan"],
+            ).pack(anchor="w", padx=18, pady=(16, 8))
+            text = ctk.CTkTextbox(
+                simulation,
+                fg_color=COLORS["row"],
+                text_color=COLORS["text"],
+                font=("Consolas", 10),
+            )
+            text.pack(fill="both", expand=True, padx=18, pady=8)
+            if operations:
+                for source, destination in operations:
+                    relative = destination.relative_to(self.folder)
+                    action = "COPIAR" if options["copy_files"] else "MOVER"
+                    text.insert(
+                        "end", f"{action:<6} {source}\n       └── {relative}\n\n"
+                    )
+            else:
+                text.insert("end", "No hay cambios pendientes con estas reglas.")
+            text.configure(state="disabled")
+            ctk.CTkButton(
+                simulation,
+                text="Cerrar",
+                command=simulation.destroy,
+            ).pack(anchor="e", padx=18, pady=(0, 14))
+            simulation.grab_set()
+
+        actions = ctk.CTkFrame(footer, fg_color="transparent")
+        actions.pack(side="right", padx=10, pady=8)
         ctk.CTkButton(
-            buttons, text="Vista previa", command=continue_to_preview
-        ).pack(side="right")
+            actions,
+            text="Cancelar",
+            fg_color=COLORS["row"],
+            hover_color=COLORS["row_hover"],
+            text_color=COLORS["muted"],
+            border_width=1,
+            border_color=COLORS["border"],
+            command=window.destroy,
+        ).pack(side="left", padx=4)
+        ctk.CTkButton(
+            actions,
+            text="◎  Simular en seco",
+            fg_color=COLORS["selection"],
+            hover_color=COLORS["row_hover"],
+            text_color=COLORS["cyan"],
+            command=simulate_organization,
+        ).pack(side="left", padx=4)
+        ctk.CTkButton(
+            actions,
+            text="Vista Previa y Organizar  →",
+            fg_color=COLORS["lime"],
+            hover_color=COLORS["lime_hover"],
+            text_color=COLORS["background"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=continue_to_preview,
+        ).pack(side="left", padx=4)
 
         window.grab_set()
         self.wait_window(window)

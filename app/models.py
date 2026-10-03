@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -40,6 +40,7 @@ class ScanResult:
 class OrganizationResult:
     moved: list[tuple[Path, Path]]
     issues: list[FileIssue]
+    copied: list[tuple[Path, Path]] = field(default_factory=list)
 
 
 @dataclass
