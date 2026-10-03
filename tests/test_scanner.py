@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import scanner
@@ -32,6 +33,15 @@ class ScanFolderTests(unittest.TestCase):
         self.assertEqual(len(result.issues), 1)
         self.assertEqual(result.issues[0].path, audio_path)
         self.assertIn("access denied", result.issues[0].message)
+
+    def test_embedded_cover_art_is_read_for_grid_previews(self):
+        picture = SimpleNamespace(data=b"cover image bytes")
+        audio = SimpleNamespace(pictures=[picture], tags={})
+
+        with patch.object(scanner, "File", return_value=audio):
+            artwork = scanner.get_artwork(Path("track.flac"))
+
+        self.assertEqual(artwork, b"cover image bytes")
 
     def test_repetidos_folder_is_not_scanned_again(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

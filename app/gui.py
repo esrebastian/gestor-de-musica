@@ -1,10 +1,12 @@
 import sys
 import threading
 import tkinter as tk
+from io import BytesIO
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
+from PIL import Image, UnidentifiedImageError
 
 from .scanner import find_duplicates, find_possible_duplicates, scan_folder
 from .organizer import (
@@ -14,6 +16,30 @@ from .organizer import (
     validate_organization,
 )
 from .models import FileIssue
+from .file_types import category_for_path
+from .version import APP_VERSION
+
+
+CATEGORY_FILTERS = {
+    "music": "music",
+    "videos": "video",
+    "images": "image",
+    "documents": "document",
+    "unclassified": "unknown_or_unclassified",
+    "temporary": "incomplete",
+}
+
+CATEGORY_EMPTY_MESSAGES = {
+    "all": "No se encuentran archivos de música",
+    "music": "No se encuentran archivos de música",
+    "videos": "No se encuentran archivos de video",
+    "images": "No se encuentran archivos de imágenes",
+    "documents": "No se encuentran archivos de documentos",
+    "unclassified": "No se encuentran archivos sin clasificar",
+    "temporary": "No se encuentran archivos temporales",
+    "duplicates": "No se encuentran archivos duplicados",
+    "untagged": "No se encuentran archivos sin etiquetas",
+}
 
 
 COLORS = {
@@ -71,16 +97,19 @@ class GestionadorArchivosApp(ctk.CTk):
         self._scan_running = False
         self._last_progress_percent = None
         self._active_filter = "all"
+        self._view_mode = "Lista"
         self._search_query = ""
         self._active_sort = "Artista"
         self.selected_song_paths = set()
         self._visible_songs = {}
+        self._preview_images = {}
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("green")
         self.set_application_icon()
 
         self.create_widgets()
+        self.set_song_filter(self._active_filter)
 
     def set_application_icon(self):
         icon_path = asset_path("gestionador_archivos.ico")
@@ -146,7 +175,7 @@ class GestionadorArchivosApp(ctk.CTk):
         ).pack(anchor="w")
         ctk.CTkLabel(
             header,
-            text="Música  ·  Versión 1.3.4",
+            text=f"Música  ·  Versión {APP_VERSION}",
             text_color=COLORS["cyan"],
             fg_color=COLORS["surface_alt"],
             corner_radius=12,
@@ -156,7 +185,7 @@ class GestionadorArchivosApp(ctk.CTk):
         ).pack(side="left", padx=(18, 6))
         self.active_directory = ctk.CTkLabel(
             header,
-            text="▣  Directorio activo:  —",
+            text="▣  Directorio activo  —",
             text_color=COLORS["muted"],
             fg_color=COLORS["surface_alt"],
             width=280,
@@ -240,6 +269,12 @@ class GestionadorArchivosApp(ctk.CTk):
         filter_row = ctk.CTkFrame(self, fg_color=COLORS["surface"], corner_radius=8)
         filter_row.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 6))
         self.filter_buttons = {}
+        filter_widths = {
+            "all": 80,
+            "music": 135,
+            "duplicates": 120,
+            "untagged": 130,
+        }
         for filter_name, label in (
             ("all", "Todos"),
             ("music", "Música y Audio"),
@@ -249,29 +284,37 @@ class GestionadorArchivosApp(ctk.CTk):
             button = ctk.CTkButton(
                 filter_row,
                 text=label,
-                command=lambda name=filter_name: self.set_song_filter(
-                    "all" if name == "music" else name
-                ),
+                command=lambda name=filter_name: self.set_song_filter(name),
                 height=30,
+                width=filter_widths[filter_name],
                 fg_color="transparent",
                 hover_color=COLORS["row_hover"],
                 text_color=COLORS["text"],
             )
             button.pack(side="left", padx=3, pady=4)
             self.filter_buttons[filter_name] = button
-        for label in ("Videos", "Fotos", "Documentos", "Sin carátula", "Listas para renombrar"):
-            ctk.CTkLabel(
+        self.category_buttons = {}
+        for filter_name, label in (
+            ("videos", "Videos"),
+            ("images", "Fotos"),
+            ("documents", "Documentos"),
+        ):
+            button = ctk.CTkButton(
                 filter_row,
                 text=label,
-                text_color=COLORS["subtle"],
+                command=lambda name=filter_name: self.set_song_filter(name),
+                height=30,
+                width=78,
                 fg_color="transparent",
-                padx=7,
-                font=ctk.CTkFont(size=12),
-            ).pack(side="left")
+                hover_color=COLORS["row_hover"],
+                text_color=COLORS["muted"],
+            )
+            button.pack(side="left", padx=2, pady=4)
+            self.category_buttons[filter_name] = button
         self.search_entry = ctk.CTkEntry(
             filter_row,
             placeholder_text="⌕  Filtrar por artista, álbum...",
-            width=220,
+            width=180,
             height=30,
             fg_color=COLORS["row"],
             border_color=COLORS["border"],
@@ -315,17 +358,26 @@ class GestionadorArchivosApp(ctk.CTk):
             height=38,
         )
         self.library_count.pack(fill="x", padx=7, pady=2)
-        for label in ("♫  Música y Audio", "▸  Videos y Películas", "▧  Fotos e Imágenes", "▤  Documentos", "◉  Sin destinatario"):
-            ctk.CTkButton(
+        self.sidebar_category_buttons = {}
+        for filter_name, label in (
+            ("music", "♫  Música y Audio"),
+            ("videos", "▸  Videos y Películas"),
+            ("images", "▧  Fotos e Imágenes"),
+            ("documents", "▤  Documentos"),
+            ("unclassified", "◉  Sin destinatario"),
+        ):
+            button = ctk.CTkButton(
                 sidebar,
                 text=label,
                 anchor="w",
-                command=lambda: None,
+                command=lambda name=filter_name: self.set_song_filter(name),
                 fg_color="transparent",
                 hover_color=COLORS["row_hover"],
                 text_color=COLORS["muted"],
                 height=32,
-            ).pack(fill="x", padx=7, pady=1)
+            )
+            button.pack(fill="x", padx=7, pady=1)
+            self.sidebar_category_buttons[filter_name] = button
         ctk.CTkFrame(
             sidebar, height=1, fg_color=COLORS["border"]
         ).pack(fill="x", padx=10, pady=(9, 5))
@@ -360,7 +412,7 @@ class GestionadorArchivosApp(ctk.CTk):
             sidebar,
             text="ⓘ  Sin app asociada",
             anchor="w",
-            command=lambda: None,
+            command=lambda: self.set_song_filter("unclassified"),
             fg_color="transparent",
             hover_color=COLORS["row_hover"],
             text_color=COLORS["muted"],
@@ -370,32 +422,30 @@ class GestionadorArchivosApp(ctk.CTk):
             sidebar,
             text="⌁  Temporales / Basura",
             anchor="w",
-            command=lambda: self.set_song_filter("flac"),
+            command=lambda: self.set_song_filter("temporary"),
             fg_color="transparent",
             hover_color=COLORS["row_hover"],
             text_color=COLORS["muted"],
             height=34,
         ).pack(fill="x", padx=7, pady=1)
-        rule_card = ctk.CTkFrame(
+        self.rule_card = ctk.CTkButton(
             sidebar,
+            text="",
+            command=self.open_preferences,
             fg_color=COLORS["surface_alt"],
+            hover_color=COLORS["row_hover"],
             border_color=COLORS["border"],
             border_width=1,
             corner_radius=7,
+            height=58,
         )
-        rule_card.pack(side="bottom", fill="x", padx=8, pady=8)
-        ctk.CTkLabel(
-            rule_card,
-            text="Regla de orden",
-            text_color=COLORS["muted"],
-            font=ctk.CTkFont(size=11),
-        ).pack(anchor="w", padx=8, pady=(5, 1))
-        ctk.CTkLabel(
-            rule_card,
-            text="{Artista}/{Álbum}/...",
+        self.rule_card.pack(side="bottom", fill="x", padx=8, pady=8)
+        self.rule_card.configure(
+            text="Regla de orden\nArtista / Álbum  ·  Ajustes",
             text_color=COLORS["cyan"],
             font=ctk.CTkFont(size=11),
-        ).pack(anchor="w", padx=8, pady=(0, 5))
+            anchor="w",
+        )
 
         table_panel = ctk.CTkFrame(workspace, fg_color=COLORS["background"])
         table_panel.grid(row=0, column=1, sticky="nsew")
@@ -423,8 +473,24 @@ class GestionadorArchivosApp(ctk.CTk):
         self.table_summary.pack(side="left", fill="x", expand=True)
         table_tools = ctk.CTkFrame(table_panel, fg_color="transparent")
         table_tools.grid(row=0, column=1, sticky="e", padx=(0, 10), pady=(8, 5))
-        ctk.CTkLabel(table_tools, text="☷ Ordenar:", text_color=COLORS["muted"]).pack(
+        ctk.CTkLabel(table_tools, text="Ordenar", text_color=COLORS["muted"]).pack(
             side="left", padx=4
+        )
+        self.view_menu = ctk.CTkOptionMenu(
+            table_tools,
+            values=["Lista", "Cuadrícula"],
+            command=self.set_view_mode,
+            width=104,
+            height=30,
+            fg_color=COLORS["surface"],
+            button_color=COLORS["surface_alt"],
+            button_hover_color=COLORS["row_hover"],
+            text_color=COLORS["muted"],
+        )
+        self.view_menu.set(self._view_mode)
+        self.view_menu.pack(side="left")
+        ctk.CTkLabel(table_tools, text="Por", text_color=COLORS["muted"]).pack(
+            side="left", padx=(10, 4)
         )
         self.sort_menu = ctk.CTkOptionMenu(
             table_tools,
@@ -540,6 +606,24 @@ class GestionadorArchivosApp(ctk.CTk):
         self.tree.bind("<Button-1>", self.handle_song_click, add=True)
         scrollbar_y.grid(row=0, column=1, sticky="ns")
         scrollbar_x.grid(row=1, column=0, sticky="ew")
+        self.grid_view = ctk.CTkScrollableFrame(
+            table_frame,
+            fg_color=COLORS["background"],
+            corner_radius=0,
+        )
+        self._grid_render_columns = 0
+        self.grid_view.bind("<Configure>", self._on_grid_resize, add="+")
+        self.grid_view.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        self.grid_view.grid_remove()
+        self.empty_state_label = ctk.CTkLabel(
+            table_frame,
+            text="",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=15, weight="bold"),
+            justify="center",
+        )
+        self.empty_state_label.place(relx=0.5, rely=0.5, anchor="center")
+        self.empty_state_label.lower()
 
         footer = ctk.CTkFrame(
             self,
@@ -604,7 +688,7 @@ class GestionadorArchivosApp(ctk.CTk):
             self.folder_entry.insert(0, folder)
             display_folder = folder if len(folder) <= 48 else f"...{folder[-45:]}"
             self.active_directory.configure(
-                text=f"▣  Directorio activo:  {display_folder}"
+                text=f"▣  Directorio activo  {display_folder}"
             )
             self.status.configure(text="Carpeta seleccionada. Pulsa Analizar para comenzar.")
 
@@ -626,6 +710,7 @@ class GestionadorArchivosApp(ctk.CTk):
         self.songs = []
         self.duplicates = []
         self.possible_duplicates = []
+        self._preview_images.clear()
         self.clear_table()
 
         thread = threading.Thread(target=self.scan, args=(self.folder,), daemon=True)
@@ -709,11 +794,33 @@ class GestionadorArchivosApp(ctk.CTk):
     def set_song_filter(self, filter_name):
         self._active_filter = filter_name
         self.render_songs()
-        for name, button in self.filter_buttons.items():
-            button.configure(
-                fg_color=COLORS["selection"] if name == filter_name else "transparent",
-                text_color=COLORS["lime"] if name == filter_name else COLORS["muted"],
-            )
+        self.library_count.configure(
+            fg_color=(
+                COLORS["selection"] if filter_name == "all" else "transparent"
+            ),
+            text_color=COLORS["lime"] if filter_name == "all" else COLORS["muted"],
+        )
+        all_button_groups = (
+            self.filter_buttons,
+            self.category_buttons,
+            self.sidebar_category_buttons,
+        )
+        category_keys = {
+            "music", "videos", "images", "documents", "unclassified", "temporary"
+        }
+        for buttons in all_button_groups:
+            for name, button in buttons.items():
+                active = name == filter_name
+                button.configure(
+                    fg_color=COLORS["selection"] if active else "transparent",
+                    text_color=(
+                        COLORS["lime"]
+                        if active and name in category_keys | {"all"}
+                        else COLORS["text"]
+                        if active
+                        else COLORS["muted"]
+                    ),
+                )
 
     def update_search(self, _event=None):
         self._search_query = self.search_entry.get().strip().casefold()
@@ -721,6 +828,10 @@ class GestionadorArchivosApp(ctk.CTk):
 
     def set_song_sort(self, sort_name):
         self._active_sort = sort_name
+        self.render_songs()
+
+    def set_view_mode(self, view_mode):
+        self._view_mode = view_mode
         self.render_songs()
 
     def render_songs(self):
@@ -741,8 +852,12 @@ class GestionadorArchivosApp(ctk.CTk):
                     for value in (song.title, song.artist, song.album, song.genre)
                 )
             ]
-        elif self._active_filter == "flac":
-            songs = [song for song in self.songs if song.path.suffix.casefold() == ".flac"]
+        elif self._active_filter in CATEGORY_FILTERS:
+            selected_category = CATEGORY_FILTERS[self._active_filter]
+            songs = [
+                song for song in self.songs
+                if category_for_path(song.path) == selected_category
+            ]
         else:
             songs = self.songs
 
@@ -772,23 +887,35 @@ class GestionadorArchivosApp(ctk.CTk):
                 else "Listo para organizar"
             )
             tag = "duplicate" if duplicate else "untagged" if untagged else "ready"
-            self.tree.insert(
-                "",
-                "end",
-                iid=str(song.path),
-                values=(
-                    "☑" if song.path in self.selected_song_paths else "☐",
-                    song.title,
-                    song.artist,
-                    song.album,
-                    song.genre,
-                    song.path.suffix.lstrip(".").upper(),
-                    song.duration_text,
-                    state,
-                ),
-                tags=(tag,),
-            )
             self._visible_songs[str(song.path)] = song
+            if self._view_mode == "Cuadrícula":
+                self._create_song_card(song, duplicate=duplicate, untagged=untagged)
+            else:
+                self.tree.insert(
+                    "",
+                    "end",
+                    iid=str(song.path),
+                    values=(
+                        "☑" if song.path in self.selected_song_paths else "☐",
+                        song.title,
+                        song.artist,
+                        song.album,
+                        song.genre,
+                        song.path.suffix.lstrip(".").upper(),
+                        song.duration_text,
+                        state,
+                    ),
+                    tags=(tag,),
+                )
+
+        if self._view_mode == "Cuadrícula":
+            self.tree.grid_remove()
+            self.grid_view.grid()
+            self._render_empty_state(songs)
+        else:
+            self.grid_view.grid_remove()
+            self.tree.grid()
+            self._render_empty_state(songs)
 
         visible_paths = {song.path for song in songs}
         all_visible_selected = bool(songs) and visible_paths.issubset(
@@ -801,11 +928,178 @@ class GestionadorArchivosApp(ctk.CTk):
 
         if hasattr(self, "table_summary"):
             self.table_summary.configure(
-                text=f"{len(songs):,} mostrados  |  "
-                f"{len(visible_paths & self.selected_song_paths):,} archivos listos para organizar"
+                text=f"{len(songs):,} mostrados  ·  "
+                f"{len(visible_paths & self.selected_song_paths):,} seleccionados"
             )
         if hasattr(self, "library_count"):
-            self.library_count.configure(text=f"♫  Toda la música       {len(self.songs):,}")
+            self.library_count.configure(text=f"▣  Todos los archivos       {len(self.songs):,}")
+
+    def _create_song_card(self, song, duplicate=False, untagged=False):
+        card_index = len(self.grid_view.winfo_children())
+        available_width = max(1, self.grid_view.master.winfo_width())
+        columns = max(1, min(4, available_width // 250))
+        self._grid_render_columns = columns
+        for column in range(columns):
+            self.grid_view.grid_columnconfigure(column, weight=1, uniform="file_cards")
+
+        card = ctk.CTkFrame(
+            self.grid_view,
+            fg_color=COLORS["surface"],
+            border_width=2 if song.path in self.selected_song_paths else 1,
+            border_color=(
+                COLORS["lime"]
+                if song.path in self.selected_song_paths
+                else COLORS["amber"]
+                if duplicate
+                else COLORS["coral"]
+                if untagged
+                else COLORS["border"]
+            ),
+            corner_radius=9,
+        )
+        card.grid(
+            row=card_index // columns,
+            column=card_index % columns,
+            sticky="nsew",
+            padx=6,
+            pady=6,
+        )
+        card.grid_columnconfigure(0, weight=1)
+        card.bind("<Button-1>", lambda _event, path=song.path: self.toggle_song_selection(path))
+
+        header = ctk.CTkFrame(card, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=9, pady=(8, 4))
+        selected = song.path in self.selected_song_paths
+        selection = ctk.CTkButton(
+            header,
+            text="☑" if selected else "☐",
+            command=lambda path=song.path: self.toggle_song_selection(path),
+            width=25,
+            height=24,
+            fg_color=COLORS["selection"] if selected else COLORS["surface_alt"],
+            hover_color=COLORS["row_hover"],
+            text_color=COLORS["lime"] if selected else COLORS["muted"],
+        )
+        selection.pack(side="left")
+        extension = song.path.suffix.lstrip(".").upper() or "ARCHIVO"
+        ctk.CTkLabel(
+            header,
+            text=extension,
+            text_color=COLORS["cyan"],
+            fg_color=COLORS["selection"],
+            corner_radius=4,
+            padx=7,
+            pady=3,
+            font=ctk.CTkFont(size=10, weight="bold"),
+        ).pack(side="left", padx=5)
+        ctk.CTkLabel(
+            header,
+            text=song.duration_text,
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=10),
+        ).pack(side="right")
+
+        preview = ctk.CTkFrame(
+            card,
+            fg_color=COLORS["row"],
+            border_color=COLORS["border"],
+            border_width=1,
+            corner_radius=7,
+            height=112,
+        )
+        preview.grid(row=1, column=0, sticky="ew", padx=9, pady=(2, 7))
+        preview.grid_propagate(False)
+        preview_image = self._get_song_preview(song)
+        if preview_image:
+            image_label = ctk.CTkLabel(preview, text="", image=preview_image)
+            image_label.pack(fill="both", expand=True, padx=4, pady=4)
+            image_label.bind(
+                "<Button-1>",
+                lambda _event, path=song.path: self.toggle_song_selection(path),
+            )
+        else:
+            ctk.CTkLabel(
+                preview,
+                text="♫",
+                text_color=COLORS["lime"],
+                font=ctk.CTkFont(size=34, weight="bold"),
+            ).pack(pady=(16, 2))
+            ctk.CTkLabel(
+                preview,
+                text=(
+                    song.album
+                    if song.album.casefold() not in {"desconocido", "unknown"}
+                    else "Sin vista previa"
+                ),
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=10),
+            ).pack(pady=(0, 8))
+        ctk.CTkLabel(
+            card,
+            text=song.title,
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).grid(row=2, column=0, sticky="ew", padx=10, pady=(2, 1))
+        ctk.CTkLabel(
+            card,
+            text=song.artist,
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=11),
+            anchor="w",
+        ).grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 8))
+
+    def _get_song_preview(self, song):
+        if song.path in self._preview_images:
+            return self._preview_images[song.path]
+        if not song.artwork:
+            self._preview_images[song.path] = None
+            return None
+
+        try:
+            with Image.open(BytesIO(song.artwork)) as image:
+                image.thumbnail((240, 96))
+                image = image.convert("RGB")
+                preview = ctk.CTkImage(
+                    light_image=image,
+                    dark_image=image,
+                    size=image.size,
+                )
+        except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+            self._preview_images[song.path] = None
+            return None
+
+        self._preview_images[song.path] = preview
+        return preview
+
+    def _on_grid_resize(self, _event=None):
+        if self._view_mode != "Cuadrícula":
+            return
+        available_width = max(1, self.grid_view.master.winfo_width())
+        columns = max(1, min(4, available_width // 250))
+        if columns != self._grid_render_columns:
+            self._grid_render_columns = columns
+            self.after_idle(self.render_songs)
+
+    def _render_empty_state(self, songs):
+        if songs:
+            self.empty_state_label.place_forget()
+            return
+        message = CATEGORY_EMPTY_MESSAGES.get(
+            self._active_filter,
+            "No se encuentran archivos para esta selección",
+        )
+        if self._search_query:
+            message = f"{message} para esta búsqueda"
+        self.empty_state_label.configure(text=message)
+        self.empty_state_label.lift()
+
+    def toggle_song_selection(self, path):
+        if path in self.selected_song_paths:
+            self.selected_song_paths.remove(path)
+        else:
+            self.selected_song_paths.add(path)
+        self.render_songs()
 
     def toggle_select_all_visible(self):
         visible_paths = {song.path for song in self._visible_songs.values()}
@@ -845,12 +1139,94 @@ class GestionadorArchivosApp(ctk.CTk):
     def clear_table(self):
         for item in self.tree.get_children():
             self.tree.delete(item)
+        for card in self.grid_view.winfo_children():
+            card.destroy()
 
     def open_organization_rules(self):
         if not self.songs:
             messagebox.showinfo("Reglas", "Analiza una carpeta para configurar sus reglas.")
             return
         self.choose_organization_options()
+
+    def open_preferences(self):
+        window = ctk.CTkToplevel(self)
+        window.title("Ajustes y regla de orden")
+        window.geometry("460x390")
+        window.resizable(False, False)
+        window.transient(self)
+        self.set_window_icon(window)
+
+        ctk.CTkLabel(
+            window,
+            text="Ajustes de la aplicación",
+            font=ctk.CTkFont(size=19, weight="bold"),
+            text_color=COLORS["text"],
+        ).pack(anchor="w", padx=22, pady=(20, 4))
+        ctk.CTkLabel(
+            window,
+            text="Elige cómo mostrar y ordenar los archivos.",
+            text_color=COLORS["muted"],
+        ).pack(anchor="w", padx=22, pady=(0, 16))
+
+        ctk.CTkLabel(window, text="Cambiar vista", anchor="w").pack(
+            fill="x", padx=22, pady=(4, 3)
+        )
+        view_menu = ctk.CTkOptionMenu(
+            window,
+            values=["Lista", "Cuadrícula"],
+            command=self._set_preference_view,
+            width=180,
+        )
+        view_menu.set(self._view_mode)
+        view_menu.pack(anchor="w", padx=22, pady=(0, 10))
+
+        ctk.CTkLabel(window, text="Ordenar por", anchor="w").pack(
+            fill="x", padx=22, pady=(4, 3)
+        )
+        sort_menu = ctk.CTkOptionMenu(
+            window,
+            values=["Artista", "Canción", "Álbum"],
+            command=self._set_preference_sort,
+            width=180,
+        )
+        sort_menu.set(self._active_sort)
+        sort_menu.pack(anchor="w", padx=22, pady=(0, 14))
+
+        ctk.CTkButton(
+            window,
+            text="Configurar reglas de organización",
+            command=lambda: (window.destroy(), self.open_organization_rules()),
+            fg_color=COLORS["selection"],
+            hover_color=COLORS["olive"],
+            text_color=COLORS["cyan"],
+        ).pack(fill="x", padx=22, pady=(2, 14))
+
+        about = ctk.CTkFrame(
+            window,
+            fg_color=COLORS["surface_alt"],
+            border_color=COLORS["border"],
+            border_width=1,
+        )
+        about.pack(fill="x", padx=22, pady=(0, 18))
+        ctk.CTkLabel(
+            about,
+            text=f"Gestionador de archivos · Versión {APP_VERSION}",
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(anchor="w", padx=12, pady=(9, 2))
+        ctk.CTkLabel(
+            about,
+            text="Aplicación de escritorio para organizar archivos localmente.",
+            text_color=COLORS["muted"],
+        ).pack(anchor="w", padx=12, pady=(0, 9))
+
+    def _set_preference_view(self, view_mode):
+        self.view_menu.set(view_mode)
+        self.set_view_mode(view_mode)
+
+    def _set_preference_sort(self, sort_name):
+        self.sort_menu.set(sort_name)
+        self.set_song_sort(sort_name)
 
     def set_issues(self, issues):
         self.issues = issues

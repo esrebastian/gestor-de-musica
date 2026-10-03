@@ -1,9 +1,12 @@
 import os
 from pathlib import Path
 import hashlib
+import base64
+import binascii
 from typing import Callable
 
 from mutagen import File
+from mutagen.flac import Picture
 from .file_types import MUSIC_EXTENSIONS
 from .models import FileIssue, ScanResult, Song
 from .organizer import DUPLICATES_FOLDER, MUSIC_FOLDER
@@ -11,6 +14,7 @@ from .organizer import DUPLICATES_FOLDER, MUSIC_FOLDER
 
 SUPPORTED_EXTENSIONS = MUSIC_EXTENSIONS
 ProgressCallback = Callable[[str, int, int], None]
+MAX_ARTWORK_BYTES = 512 * 1024
 
 
 def get_tag(audio, names, default="Desconocido"):
@@ -42,6 +46,66 @@ def get_hash(path, chunk_size=1024 * 1024):
     return sha256.hexdigest()
 
 
+def get_artwork(path):
+    def valid_artwork(data):
+        return data if data and len(data) <= MAX_ARTWORK_BYTES else None
+
+    audio = File(path)
+    if not audio:
+        return None
+
+    pictures = getattr(audio, "pictures", ())
+    if pictures:
+        return valid_artwork(pictures[0].data)
+
+    tags = audio.tags
+    if not tags:
+        return None
+
+    getall = getattr(tags, "getall", None)
+    if getall:
+        for frame in getall("APIC"):
+            if frame.data:
+                artwork = valid_artwork(frame.data)
+                if artwork:
+                    return artwork
+
+    covers = tags.get("covr", ())
+    if isinstance(covers, (bytes, bytearray)):
+        covers = (covers,)
+    for cover in covers:
+        if cover:
+            artwork = valid_artwork(bytes(cover))
+            if artwork:
+                return artwork
+
+    encoded_pictures = tags.get("metadata_block_picture", ())
+    if isinstance(encoded_pictures, (str, bytes)):
+        encoded_pictures = (encoded_pictures,)
+    for encoded in encoded_pictures:
+        if isinstance(encoded, bytes):
+            try:
+                encoded = encoded.decode("ascii")
+            except UnicodeDecodeError:
+                continue
+        try:
+            picture = Picture(base64.b64decode(encoded))
+        except (binascii.Error, ValueError):
+            continue
+        if picture.data:
+            artwork = valid_artwork(picture.data)
+            if artwork:
+                return artwork
+
+    for frame in tags.values():
+        data = getattr(frame, "data", None)
+        if data and getattr(frame, "mime", "").startswith("image/"):
+            artwork = valid_artwork(data)
+            if artwork:
+                return artwork
+    return None
+
+
 def read_song(path):
     audio = File(path, easy=True)
 
@@ -53,6 +117,7 @@ def read_song(path):
         song.album = get_tag(audio, ["album"])
         song.genre = get_tag(audio, ["genre"])
         song.year = get_tag(audio, ["date"], "")
+        song.artwork = get_artwork(path)
 
         if audio.info:
             song.duration = getattr(audio.info, "length", 0.0)

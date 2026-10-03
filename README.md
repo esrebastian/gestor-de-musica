@@ -10,6 +10,9 @@ El lema de la aplicación es **“Tus carpetas ordenadas en un clic. Olvídate d
 - Muestra canción, artista, álbum, género, formato y duración; indica el avance del análisis con una barra y porcentaje.
 - Distingue copias exactas mediante SHA-256 de posibles repetidos con artista, canción y álbum coincidentes.
 - Permite filtrar todas las canciones, repetidas y canciones con etiquetas ausentes.
+- Permite cambiar entre lista y cuadrícula; las tarjetas muestran la carátula incrustada cuando existe.
+- Las categorías de video, imágenes, documentos y archivos sin clasificar se pueden seleccionar y muestran un estado vacío mientras no estén habilitadas.
+- La tarjeta «Regla de orden» abre ajustes de vista, orden y reglas de organización.
 - Previsualiza la organización antes de confirmar y permite incluir el género como criterio opcional.
 - Ofrece simulación sin cambios y modo seguro de copia, que conserva intactos los originales.
 - La simulación permite buscar operaciones, filtrar música, consultar estados y copiar el reporte.
@@ -112,9 +115,9 @@ La versión se define en `VERSION` con formato `MAJOR.MINOR.PATCH`. El script a�
 - Ejecutable y sus dependencias: `dist\GestionadorDeArchivos-<versión>\`
 - Ejecutable: `dist\GestionadorDeArchivos-<versión>\GestionadorDeArchivos-<versión>.exe`
 - Instalador: `dist\GestionadorDeArchivos-Setup-<versión>.exe`
-- Archivos temporales de compilación: `build\GestionadorDeArchivos-<versión>\`
+- Archivos temporales de compilación: `build\GestionadorDeArchivos\`
 
-Cada versión conserva su propia carpeta ejecutable directamente en `dist`. El instalador se guarda directamente en `dist`, sin una subcarpeta adicional.
+`dist` conserva únicamente el ejecutable y el instalador de la versión actual; al completar una compilación correcta, el script elimina las salidas antiguas de esta aplicación. El ejecutable queda en su carpeta versionada y el instalador directamente en `dist`, sin subcarpeta.
 
 Antes de distribuir el instalador, pruébalo en un Windows que no tenga Python instalado. Windows SmartScreen o algunos antivirus pueden advertir sobre ejecutables nuevos sin firma digital.
 
@@ -122,6 +125,7 @@ Antes de distribuir el instalador, pruébalo en un Windows que no tenga Python i
 
 - `customtkinter`: interfaz gráfica.
 - `mutagen`: lectura de metadatos de audio.
+- `Pillow`: visualización de carátulas incrustadas en la cuadrícula.
 - `Send2Trash`: envío seguro de copias exactas a la Papelera.
 - PyInstaller e Inno Setup se usan únicamente para generar el instalador de Windows.
 

@@ -27,7 +27,7 @@ $versionedName = "$applicationName-$appVersion"
 $executableName = "$versionedName.exe"
 $bundleDirectory = Join-Path $distributionDirectory $versionedName
 $installerFile = Join-Path $distributionDirectory "$applicationName-Setup-$appVersion.exe"
-$buildDirectory = Join-Path $projectRoot "build\$versionedName"
+$buildDirectory = Join-Path $projectRoot "build\GestionadorDeArchivos"
 $versionInfoPath = Join-Path $buildDirectory "$applicationName.version.txt"
 
 $missingAssets = @($iconFile, $logoFile) | Where-Object { -not (Test-Path $_) }
@@ -106,6 +106,7 @@ Set-Content -Path $versionInfoPath -Value $versionInfo -Encoding ascii
     --version-file $versionInfoPath `
     --add-data "$logoFile;assets" `
     --add-data "$iconFile;assets" `
+    --add-data "$versionFile;." `
     --collect-all customtkinter `
     --collect-all send2trash `
     --distpath $distributionDirectory `
@@ -116,6 +117,52 @@ if ($LASTEXITCODE -ne 0) { throw "PyInstaller no pudo construir la aplicación."
 
 & $innoCompilerPath "/DSourceDir=$bundleDirectory" "/DOutputDir=$distributionDirectory" "/DAppVersion=$appVersion" "/DAppExeName=$executableName" "/DIconFile=$iconFile" $innoScript
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup no pudo crear el instalador." }
+
+$staleDistributionItems = Get-ChildItem -LiteralPath $distributionDirectory -Force |
+    Where-Object {
+        ($_.PSIsContainer -and (
+            $_.Name -eq "Ejecutables" -or
+            $_.Name -eq "GestorDeMusica" -or
+            $_.Name -eq $applicationName -or
+            ($_.Name -like "$applicationName-*" -and $_.Name -ne $versionedName) -or
+            $_.Name -eq "installer"
+        )) -or
+        (-not $_.PSIsContainer -and (
+            ($_.Name -like "$applicationName-Setup-*.exe" -and $_.Name -ne (Split-Path $installerFile -Leaf)) -or
+            $_.Name -eq "GestorDeMusica-Setup.exe"
+        ))
+    }
+foreach ($item in $staleDistributionItems) {
+    Remove-Item -LiteralPath $item.FullName -Recurse -Force
+}
+
+$staleBuildItems = Get-ChildItem -LiteralPath (Join-Path $projectRoot "build") -Force |
+    Where-Object {
+        $_.FullName -ne $buildDirectory -and
+        $_.Name -match '^(GestionadorDeArchivos|GestorDeMusica)(-|\.|$)'
+    }
+foreach ($item in $staleBuildItems) {
+    Remove-Item -LiteralPath $item.FullName -Recurse -Force
+}
+
+$buildWorkspaceItems = Get-ChildItem -LiteralPath $buildDirectory -Force |
+    Where-Object {
+        $_.Name -notin @(
+            "work",
+            "localpycs",
+            "$applicationName.version.txt",
+            "$versionedName.spec"
+        )
+    }
+foreach ($item in $buildWorkspaceItems) {
+    Remove-Item -LiteralPath $item.FullName -Recurse -Force
+}
+
+$staleWorkItems = Get-ChildItem -LiteralPath (Join-Path $buildDirectory "work") -Force |
+    Where-Object { $_.Name -ne $versionedName }
+foreach ($item in $staleWorkItems) {
+    Remove-Item -LiteralPath $item.FullName -Recurse -Force
+}
 
 Write-Host "Versión: $appVersion"
 Write-Host "Ejecutable creado: $bundleDirectory\$executableName"

@@ -12,6 +12,7 @@ class Song:
     year: str = ""
     duration: float = 0.0
     file_hash: str = ""
+    artwork: bytes | None = field(default=None, compare=False, repr=False)
 
     @property
     def filename(self):
