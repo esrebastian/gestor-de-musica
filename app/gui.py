@@ -13,6 +13,7 @@ from .organizer import (
     process_duplicates,
     validate_organization,
 )
+from .models import FileIssue
 
 
 COLORS = {
@@ -145,7 +146,7 @@ class GestionadorArchivosApp(ctk.CTk):
         ).pack(anchor="w")
         ctk.CTkLabel(
             header,
-            text="Música  ·  Versión 1.3.2",
+            text="Música  ·  Versión 1.3.4",
             text_color=COLORS["cyan"],
             fg_color=COLORS["surface_alt"],
             corner_radius=12,
@@ -1648,7 +1649,7 @@ class GestionadorArchivosApp(ctk.CTk):
             self._preview_copy_mode = copy_var.get()
             window.destroy()
 
-        def simulate_organization():
+        def show_organization_simulation():
             options = current_options()
             preview_options = {
                 key: value for key, value in options.items() if key != "copy_files"
@@ -1656,41 +1657,505 @@ class GestionadorArchivosApp(ctk.CTk):
             operations = preview_organization(
                 self.folder, selected_songs, **preview_options
             )
+            issues = validate_organization(
+                self.folder, selected_songs, **options
+            )
+            issue_paths = {issue.path for issue in issues}
+            songs_by_path = {song.path: song for song in selected_songs}
+            file_sizes = {}
+            total_bytes = 0
+            size_errors = set()
+            for operation in operations:
+                source = operation[0]
+                try:
+                    size = source.stat().st_size
+                except OSError:
+                    file_sizes[source] = None
+                    size_errors.add(source)
+                else:
+                    file_sizes[source] = size
+                    total_bytes += size
+
+            if size_errors:
+                issues.extend(
+                    FileIssue(path, "No se pudo leer el tamaño del archivo.")
+                    for path in size_errors
+                )
+                issue_paths.update(size_errors)
+
             simulation = ctk.CTkToplevel(window)
             simulation.title("Simulación de organización")
-            simulation.geometry("760x480")
-            simulation.minsize(560, 340)
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            width = min(1240, max(900, int(screen_width * 0.90)))
+            height = min(920, max(640, int(screen_height * 0.92)))
+            x = max(0, (screen_width - width) // 2)
+            y = max(0, (screen_height - height) // 2)
+            simulation.geometry(f"{width}x{height}+{x}+{y}")
+            simulation.minsize(min(width, 900), min(height, 640))
             simulation.transient(window)
             self.set_window_icon(simulation)
-            ctk.CTkLabel(
+            simulation.grid_columnconfigure(0, weight=1)
+            simulation.grid_rowconfigure(1, weight=1)
+
+            title_bar = ctk.CTkFrame(
                 simulation,
-                text=f"SIMULACIÓN · {len(operations):,} ARCHIVOS",
-                font=ctk.CTkFont(size=16, weight="bold"),
-                text_color=COLORS["cyan"],
-            ).pack(anchor="w", padx=18, pady=(16, 8))
-            text = ctk.CTkTextbox(
-                simulation,
-                fg_color=COLORS["row"],
-                text_color=COLORS["text"],
-                font=("Consolas", 10),
+                fg_color=COLORS["surface_alt"],
+                corner_radius=0,
+                border_width=1,
+                border_color=COLORS["border"],
             )
-            text.pack(fill="both", expand=True, padx=18, pady=8)
-            if operations:
-                for source, destination in operations:
-                    relative = destination.relative_to(self.folder)
-                    action = "COPIAR" if options["copy_files"] else "MOVER"
-                    text.insert(
-                        "end", f"{action:<6} {source}\n       └── {relative}\n\n"
+            title_bar.grid(row=0, column=0, sticky="ew")
+            icon = tk.PhotoImage(
+                file=str(asset_path("gestionador_archivos.png"))
+            ).subsample(20, 20)
+            simulation._simulation_icon = icon
+            tk.Label(
+                title_bar,
+                image=icon,
+                bg=COLORS["surface_alt"],
+                bd=0,
+                highlightthickness=0,
+            ).pack(side="left", padx=(16, 9), pady=7)
+            ctk.CTkLabel(
+                title_bar,
+                text="Simulación de organización",
+                text_color=COLORS["text"],
+                font=ctk.CTkFont(size=13, weight="bold"),
+            ).pack(side="left", pady=8)
+            ctk.CTkLabel(
+                title_bar,
+                text="SIMULACIÓN ACTIVA",
+                text_color=COLORS["lime"],
+                fg_color=COLORS["selection"],
+                corner_radius=9,
+                padx=9,
+                pady=3,
+                font=ctk.CTkFont(size=9, weight="bold"),
+            ).pack(side="left", padx=10)
+
+            body = ctk.CTkFrame(simulation, fg_color=COLORS["background"])
+            body.grid(row=1, column=0, sticky="nsew", padx=18, pady=14)
+            body.grid_columnconfigure(0, weight=1)
+            body.grid_rowconfigure(2, weight=1)
+
+            summary_card = ctk.CTkFrame(
+                body,
+                fg_color=COLORS["surface"],
+                corner_radius=10,
+                border_width=1,
+                border_color=COLORS["border"],
+            )
+            summary_card.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+            summary_card.grid_columnconfigure(0, weight=1)
+            overview = ctk.CTkFrame(summary_card, fg_color="transparent")
+            overview.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 10))
+            ctk.CTkLabel(
+                overview,
+                text="●  SIMULACIÓN DE OPERACIONES",
+                text_color=COLORS["lime"],
+                font=ctk.CTkFont(size=16, weight="bold"),
+            ).pack(anchor="w")
+            validation_text = "Validado" if not issues else f"{len(issues)} para revisar"
+            validation_color = COLORS["lime"] if not issues else COLORS["coral"]
+            ctk.CTkLabel(
+                overview,
+                text=validation_text,
+                text_color=validation_color,
+                fg_color=COLORS["selection"] if not issues else COLORS["coral_dark"],
+                corner_radius=8,
+                padx=9,
+                pady=4,
+                font=ctk.CTkFont(size=10, weight="bold"),
+            ).pack(anchor="w", pady=(5, 4))
+            action_name = "COPIAR" if options["copy_files"] else "MOVER"
+            ctk.CTkLabel(
+                overview,
+                text=(
+                    "Revisión en seco. No se modificará ningún archivo hasta "
+                    "que confirmes la organización."
+                ),
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=11),
+                wraplength=width - 100,
+                justify="left",
+            ).pack(anchor="w")
+
+            metrics = ctk.CTkFrame(
+                summary_card, fg_color="transparent"
+            )
+            metrics.grid(row=0, column=1, sticky="e", padx=14, pady=10)
+            metric_items = (
+                ("ARCHIVOS", f"{len(operations):,}", COLORS["text"]),
+                ("MODO", action_name, COLORS["cyan"]),
+                ("ESPACIO", f"{total_bytes / (1024 * 1024):,.2f} MB", COLORS["text"]),
+                (
+                    "CONFLICTOS",
+                    f"{len(issues)} error(es)" if issues else "0 errores",
+                    COLORS["coral"] if issues else COLORS["lime"],
+                ),
+            )
+            for title, value, color in metric_items:
+                card = ctk.CTkFrame(
+                    metrics,
+                    fg_color=COLORS["row"],
+                    corner_radius=8,
+                    border_width=1,
+                    border_color=COLORS["border"],
+                )
+                card.pack(side="left", padx=3)
+                ctk.CTkLabel(
+                    card,
+                    text=title,
+                    text_color=COLORS["subtle"],
+                    font=ctk.CTkFont(size=8, weight="bold"),
+                ).pack(anchor="w", padx=8, pady=(7, 1))
+                ctk.CTkLabel(
+                    card,
+                    text=value,
+                    text_color=color,
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                ).pack(anchor="w", padx=8, pady=(0, 7))
+
+            path_line = ctk.CTkFrame(
+                summary_card,
+                fg_color=COLORS["surface_alt"],
+                corner_radius=6,
+            )
+            path_line.grid(
+                row=1, column=0, columnspan=2, sticky="ew", padx=12, pady=(0, 12)
+            )
+            ctk.CTkLabel(
+                path_line,
+                text=(
+                    f"Destino base: {self.folder}    ·    "
+                    f"Origen actual: {self.folder}"
+                ),
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=10),
+                anchor="w",
+            ).pack(fill="x", padx=9, pady=6)
+
+            toolbar = ctk.CTkFrame(body, fg_color="transparent")
+            toolbar.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+            filters = ctk.CTkFrame(toolbar, fg_color="transparent")
+            filters.pack(side="left")
+            all_button = ctk.CTkButton(
+                filters,
+                text=f"Todos ({len(operations):,})",
+                width=112,
+                height=30,
+                fg_color=COLORS["selection"],
+                hover_color=COLORS["row_hover"],
+                text_color=COLORS["text"],
+            )
+            all_button.pack(side="left", padx=(0, 3))
+            music_button = ctk.CTkButton(
+                filters,
+                text=f"Música ({len(operations):,})",
+                width=112,
+                height=30,
+                fg_color="transparent",
+                hover_color=COLORS["row_hover"],
+                text_color=COLORS["muted"],
+            )
+            music_button.pack(side="left", padx=3)
+            for label in ("Fotos", "Documentos", "Videos"):
+                ctk.CTkButton(
+                    filters,
+                    text=label,
+                    width=88,
+                    height=30,
+                    state="disabled",
+                    fg_color="transparent",
+                    text_color=COLORS["subtle"],
+                ).pack(side="left", padx=3)
+
+            search_var = tk.StringVar()
+            search_entry = ctk.CTkEntry(
+                toolbar,
+                textvariable=search_var,
+                placeholder_text="⌕  Filtrar por archivo, artista o extensión...",
+                width=310,
+                height=32,
+                fg_color=COLORS["row"],
+                border_color=COLORS["border"],
+                text_color=COLORS["text"],
+            )
+            search_entry.pack(side="right", padx=(8, 0))
+            report_button = ctk.CTkButton(
+                toolbar,
+                text="▤  Copiar reporte",
+                width=130,
+                height=32,
+                fg_color=COLORS["surface"],
+                hover_color=COLORS["row_hover"],
+                text_color=COLORS["muted"],
+                border_width=1,
+                border_color=COLORS["border"],
+            )
+            report_button.pack(side="right", padx=4)
+
+            console = ctk.CTkFrame(
+                body,
+                fg_color=COLORS["surface_alt"],
+                corner_radius=9,
+                border_width=1,
+                border_color=COLORS["border"],
+            )
+            console.grid(row=2, column=0, sticky="nsew")
+            console.grid_columnconfigure(0, weight=1)
+            console.grid_rowconfigure(1, weight=1)
+            tree = ttk.Treeview(
+                console,
+                columns=("operation", "source", "destination", "metadata", "state"),
+                show="headings",
+                selectmode="browse",
+            )
+            tree.heading("operation", text="OPERACIÓN")
+            tree.heading("source", text="ORIGEN")
+            tree.heading("destination", text="DESTINO ESTIMADO")
+            tree.heading("metadata", text="METADATOS / TAMAÑO")
+            tree.heading("state", text="ESTADO")
+            tree.column("operation", width=82, minwidth=70, anchor="center", stretch=False)
+            tree.column("source", width=300, minwidth=170, anchor="w")
+            tree.column("destination", width=365, minwidth=190, anchor="w")
+            tree.column("metadata", width=145, minwidth=115, anchor="center", stretch=False)
+            tree.column("state", width=140, minwidth=120, anchor="center", stretch=False)
+            style = ttk.Style(simulation)
+            style.configure(
+                "Simulation.Treeview",
+                background=COLORS["row"],
+                fieldbackground=COLORS["row"],
+                foreground=COLORS["text"],
+                bordercolor=COLORS["border"],
+                rowheight=34,
+                font=("Segoe UI", 9),
+            )
+            style.configure(
+                "Simulation.Treeview.Heading",
+                background=COLORS["surface"],
+                foreground=COLORS["muted"],
+                relief="flat",
+                font=("Segoe UI", 9, "bold"),
+            )
+            style.map(
+                "Simulation.Treeview",
+                background=[("selected", COLORS["selection"])],
+                foreground=[("selected", COLORS["text"])],
+            )
+            tree.configure(style="Simulation.Treeview")
+            tree.tag_configure("ready", foreground=COLORS["lime"])
+            tree.tag_configure("issue", foreground=COLORS["coral"])
+            tree.grid(row=1, column=0, sticky="nsew", padx=(8, 0), pady=8)
+            scrollbar_y = ttk.Scrollbar(
+                console, orient="vertical", command=tree.yview
+            )
+            scrollbar_y.grid(row=1, column=1, sticky="ns", padx=(0, 8), pady=8)
+            scrollbar_x = ttk.Scrollbar(
+                console, orient="horizontal", command=tree.xview
+            )
+            scrollbar_x.grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 7))
+            tree.configure(
+                yscrollcommand=scrollbar_y.set,
+                xscrollcommand=scrollbar_x.set,
+            )
+
+            list_footer = ctk.CTkFrame(
+                console, fg_color=COLORS["surface_alt"]
+            )
+            list_footer.grid(row=3, column=0, columnspan=2, sticky="ew")
+            list_summary = ctk.CTkLabel(
+                list_footer,
+                text="",
+                text_color=COLORS["subtle"],
+                font=ctk.CTkFont(size=9),
+                anchor="w",
+            )
+            list_summary.pack(side="left", padx=10, pady=6)
+            ctk.CTkLabel(
+                list_footer,
+                text="Desplázate para revisar las operaciones",
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=9),
+            ).pack(side="right", padx=10, pady=6)
+
+            operation_rows = []
+            for index, (source, destination) in enumerate(operations):
+                song = songs_by_path.get(source)
+                size = file_sizes[source]
+                metadata = (
+                    f"{source.suffix.lstrip('.').upper() or 'ARCHIVO'}"
+                    f" · {song.duration_text if song else '—'}"
+                )
+                size_label = (
+                    f"{size / (1024 * 1024):.2f} MB"
+                    if size is not None
+                    else "Tamaño no disponible"
+                )
+                status = (
+                    "Revisar"
+                    if source in issue_paths or destination in issue_paths
+                    else f"Listo para {action_name.casefold()}"
+                )
+                row = {
+                    "id": f"operation-{index}",
+                    "operation": action_name,
+                    "source": str(source),
+                    "destination": str(destination),
+                    "metadata": f"{metadata} · {size_label}",
+                    "status": status,
+                    "artist": song.artist.casefold() if song else "",
+                    "extension": source.suffix.casefold(),
+                    "issue": source in issue_paths or destination in issue_paths,
+                }
+                operation_rows.append(row)
+
+            active_filter = {"value": "all"}
+
+            def render_operations():
+                query = search_var.get().strip().casefold()
+                for item in tree.get_children():
+                    tree.delete(item)
+                visible_count = 0
+                for row in operation_rows:
+                    if active_filter["value"] == "music" and row["extension"] not in {
+                        ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".wav",
+                        ".wma", ".opus",
+                    }:
+                        continue
+                    searchable = " ".join(
+                        (
+                            row["source"],
+                            row["destination"],
+                            row["artist"],
+                            row["extension"],
+                        )
+                    ).casefold()
+                    if query and query not in searchable:
+                        continue
+                    tree.insert(
+                        "",
+                        "end",
+                        iid=row["id"],
+                        values=(
+                            row["operation"],
+                            row["source"],
+                            row["destination"],
+                            row["metadata"],
+                            row["status"],
+                        ),
+                        tags=("issue" if row["issue"] else "ready",),
                     )
-            else:
-                text.insert("end", "No hay cambios pendientes con estas reglas.")
-            text.configure(state="disabled")
-            ctk.CTkButton(
+                    visible_count += 1
+                list_summary.configure(
+                    text=(
+                        f"Mostrando {visible_count:,} de {len(operations):,} "
+                        "operaciones precalculadas"
+                    )
+                )
+
+            def set_operation_filter(filter_name):
+                active_filter["value"] = filter_name
+                all_button.configure(
+                    fg_color=(
+                        COLORS["selection"] if filter_name == "all" else "transparent"
+                    ),
+                    text_color=COLORS["text"] if filter_name == "all" else COLORS["muted"],
+                )
+                music_button.configure(
+                    fg_color=(
+                        COLORS["selection"] if filter_name == "music" else "transparent"
+                    ),
+                    text_color=COLORS["text"] if filter_name == "music" else COLORS["muted"],
+                )
+                render_operations()
+
+            all_button.configure(
+                command=lambda: set_operation_filter("all")
+            )
+            music_button.configure(
+                command=lambda: set_operation_filter("music")
+            )
+            search_var.trace_add("write", lambda *_: render_operations())
+            render_operations()
+
+            def copy_report():
+                report_lines = [
+                    "SIMULACIÓN DE ORGANIZACIÓN",
+                    f"Origen: {self.folder}",
+                    f"Acción: {action_name}",
+                    f"Operaciones: {len(operations)}",
+                    f"Espacio: {total_bytes / (1024 * 1024):.2f} MB",
+                    f"Problemas: {len(issues)}",
+                    "",
+                ]
+                report_lines.extend(
+                    f"{row['operation']}\t{row['source']}\t"
+                    f"{row['destination']}\t{row['metadata']}\t{row['status']}"
+                    for row in operation_rows
+                )
+                try:
+                    simulation.clipboard_clear()
+                    simulation.clipboard_append("\n".join(report_lines))
+                except tk.TclError as error:
+                    messagebox.showerror(
+                        "No se pudo copiar el reporte",
+                        str(error),
+                        parent=simulation,
+                    )
+                    return
+                messagebox.showinfo(
+                    "Reporte copiado",
+                    "El reporte de simulación se copió al portapapeles.",
+                    parent=simulation,
+                )
+
+            report_button.configure(command=copy_report)
+
+            footer = ctk.CTkFrame(
                 simulation,
-                text="Cerrar",
+                fg_color=COLORS["surface_alt"],
+                corner_radius=0,
+                border_width=1,
+                border_color=COLORS["border"],
+            )
+            footer.grid(row=2, column=0, sticky="ew")
+            note = ctk.CTkLabel(
+                footer,
+                text=(
+                    "ℹ  Vista previa en seco. No se modificará ningún archivo "
+                    "hasta que confirmes."
+                ),
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=10),
+                anchor="w",
+            )
+            note.pack(side="left", fill="x", expand=True, padx=14, pady=10)
+            ctk.CTkButton(
+                footer,
+                text="Cerrar simulación",
+                fg_color=COLORS["row"],
+                hover_color=COLORS["row_hover"],
+                text_color=COLORS["text"],
+                border_width=1,
+                border_color=COLORS["border"],
                 command=simulation.destroy,
-            ).pack(anchor="e", padx=18, pady=(0, 14))
+            ).pack(side="right", padx=8, pady=8)
+            ctk.CTkButton(
+                footer,
+                text=f"Confirmar y ejecutar organización ({len(operations):,})",
+                fg_color=COLORS["lime"],
+                hover_color=COLORS["lime_hover"],
+                text_color=COLORS["background"],
+                font=ctk.CTkFont(size=11, weight="bold"),
+                state="disabled" if issues or not operations else "normal",
+                command=lambda: self._confirm_simulated_organization(
+                    simulation, continue_to_preview
+                ),
+            ).pack(side="right", padx=4, pady=8)
             simulation.grab_set()
+            simulation.focus_force()
 
         actions = ctk.CTkFrame(footer, fg_color="transparent")
         actions.pack(side="right", padx=10, pady=8)
@@ -1706,11 +2171,11 @@ class GestionadorArchivosApp(ctk.CTk):
         ).pack(side="left", padx=4)
         ctk.CTkButton(
             actions,
-            text="◎  Simular en seco",
+            text="Simulación",
             fg_color=COLORS["selection"],
             hover_color=COLORS["row_hover"],
             text_color=COLORS["cyan"],
-            command=simulate_organization,
+            command=show_organization_simulation,
         ).pack(side="left", padx=4)
         ctk.CTkButton(
             actions,
@@ -1725,6 +2190,10 @@ class GestionadorArchivosApp(ctk.CTk):
         window.grab_set()
         self.wait_window(window)
         return result["options"]
+
+    def _confirm_simulated_organization(self, simulation, continue_callback):
+        simulation.destroy()
+        continue_callback()
 
     @staticmethod
     def _confirm_preview(window, result):

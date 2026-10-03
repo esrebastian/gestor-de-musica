@@ -3,9 +3,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 $versionFile = Join-Path $projectRoot "VERSION"
 $python = Join-Path $projectRoot ".venv\Scripts\python.exe"
-$bundleDirectory = Join-Path $projectRoot "dist\GestionadorDeArchivos"
-$installerDirectory = Join-Path $projectRoot "dist\installer"
-$buildDirectory = Join-Path $projectRoot "build"
+$distributionDirectory = Join-Path $projectRoot "dist"
 $innoScript = Join-Path $projectRoot "installer\GestionadorDeArchivos.iss"
 $iconFile = Join-Path $projectRoot "assets\gestionador_archivos.ico"
 $logoFile = Join-Path $projectRoot "assets\gestionador_archivos.png"
@@ -24,13 +22,20 @@ if ($versionParts | Where-Object { $_ -gt 65535 }) {
     throw "Cada componente de VERSION debe ser menor o igual a 65535."
 }
 
+$applicationName = "GestionadorDeArchivos"
+$versionedName = "$applicationName-$appVersion"
+$executableName = "$versionedName.exe"
+$bundleDirectory = Join-Path $distributionDirectory $versionedName
+$installerFile = Join-Path $distributionDirectory "$applicationName-Setup-$appVersion.exe"
+$buildDirectory = Join-Path $projectRoot "build\$versionedName"
+$versionInfoPath = Join-Path $buildDirectory "$applicationName.version.txt"
+
 $missingAssets = @($iconFile, $logoFile) | Where-Object { -not (Test-Path $_) }
 if ($missingAssets.Count -gt 0) {
     throw "Faltan recursos de la aplicación: $($missingAssets -join ', ')"
 }
 
 $fileVersion = ($versionParts + 0) -join ","
-$versionInfoPath = Join-Path $buildDirectory "GestionadorDeArchivos.version.txt"
 
 if (-not (Test-Path $python)) {
     throw "No se encontró .venv. Crea el entorno e instala requirements.txt antes de construir."
@@ -83,7 +88,7 @@ VSVersionInfo(
           StringStruct('FileDescription', 'Gestionador de archivos'),
           StringStruct('FileVersion', '$appVersion'),
           StringStruct('InternalName', 'GestionadorDeArchivos'),
-          StringStruct('OriginalFilename', 'GestionadorDeArchivos.exe'),
+          StringStruct('OriginalFilename', '$executableName'),
           StringStruct('ProductName', 'Gestionador de archivos'),
           StringStruct('ProductVersion', '$appVersion')
         ]
@@ -96,23 +101,22 @@ VSVersionInfo(
 Set-Content -Path $versionInfoPath -Value $versionInfo -Encoding ascii
 
 & $python -m PyInstaller --noconfirm --clean --windowed --onedir `
-    --name GestionadorDeArchivos `
+    --name $versionedName `
     --icon $iconFile `
     --version-file $versionInfoPath `
     --add-data "$logoFile;assets" `
     --add-data "$iconFile;assets" `
     --collect-all customtkinter `
     --collect-all send2trash `
-    --distpath (Join-Path $projectRoot "dist") `
+    --distpath $distributionDirectory `
     --workpath $buildDirectory `
     --specpath $buildDirectory `
     (Join-Path $projectRoot "main.py")
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller no pudo construir la aplicación." }
 
-New-Item -ItemType Directory -Path $installerDirectory -Force | Out-Null
-& $innoCompilerPath "/DSourceDir=$bundleDirectory" "/DOutputDir=$installerDirectory" "/DAppVersion=$appVersion" "/DIconFile=$iconFile" $innoScript
+& $innoCompilerPath "/DSourceDir=$bundleDirectory" "/DOutputDir=$distributionDirectory" "/DAppVersion=$appVersion" "/DAppExeName=$executableName" "/DIconFile=$iconFile" $innoScript
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup no pudo crear el instalador." }
 
 Write-Host "Versión: $appVersion"
-Write-Host "Ejecutable creado: $bundleDirectory\GestionadorDeArchivos.exe"
-Write-Host "Instalador creado: $installerDirectory\GestionadorDeArchivos-Setup-$appVersion.exe"
+Write-Host "Ejecutable creado: $bundleDirectory\$executableName"
+Write-Host "Instalador creado: $installerFile"

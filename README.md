@@ -12,6 +12,7 @@ El lema de la aplicación es **“Tus carpetas ordenadas en un clic. Olvídate d
 - Permite filtrar todas las canciones, repetidas y canciones con etiquetas ausentes.
 - Previsualiza la organización antes de confirmar y permite incluir el género como criterio opcional.
 - Ofrece simulación sin cambios y modo seguro de copia, que conserva intactos los originales.
+- La simulación permite buscar operaciones, filtrar música, consultar estados y copiar el reporte.
 - Envía las canciones sin metadatos a la carpeta de artistas desconocidos cuando se activa esa regla.
 - Para copias exactas permite conservarlas, mover las copias adicionales al árbol musical o enviarlas a la Papelera de Windows.
 - Informa los errores de lectura y organización en la interfaz.
@@ -108,8 +109,12 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 
 La versión se define en `VERSION` con formato `MAJOR.MINOR.PATCH`. El script añade el icono y los metadatos al ejecutable, incluye el logotipo de la interfaz y compila el instalador. Los archivos generados son:
 
-- Ejecutable: `dist\GestionadorDeArchivos\GestionadorDeArchivos.exe`
-- Instalador: `dist\installer\GestionadorDeArchivos-Setup-<versión>.exe`
+- Ejecutable y sus dependencias: `dist\GestionadorDeArchivos-<versión>\`
+- Ejecutable: `dist\GestionadorDeArchivos-<versión>\GestionadorDeArchivos-<versión>.exe`
+- Instalador: `dist\GestionadorDeArchivos-Setup-<versión>.exe`
+- Archivos temporales de compilación: `build\GestionadorDeArchivos-<versión>\`
+
+Cada versión conserva su propia carpeta ejecutable directamente en `dist`. El instalador se guarda directamente en `dist`, sin una subcarpeta adicional.
 
 Antes de distribuir el instalador, pruébalo en un Windows que no tenga Python instalado. Windows SmartScreen o algunos antivirus pueden advertir sobre ejecutables nuevos sin firma digital.
 

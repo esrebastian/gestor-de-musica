@@ -10,6 +10,10 @@
   #error AppVersion no fue definido por build_windows.ps1
 #endif
 
+#ifndef AppExeName
+  #error AppExeName no fue definido por build_windows.ps1
+#endif
+
 #ifndef IconFile
   #error IconFile no fue definido por build_windows.ps1
 #endif
@@ -38,8 +42,8 @@ Name: "desktopicon"; Description: "Crear un acceso directo en el Escritorio"; Gr
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{userdesktop}\Gestionador de archivos"; Filename: "{app}\GestionadorDeArchivos.exe"; IconFilename: "{app}\GestionadorDeArchivos.exe"; IconIndex: 0; Tasks: desktopicon
-Name: "{userprograms}\Gestionador de archivos\Gestionador de archivos"; Filename: "{app}\GestionadorDeArchivos.exe"; IconFilename: "{app}\GestionadorDeArchivos.exe"; IconIndex: 0
+Name: "{userdesktop}\Gestionador de archivos"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppExeName}"; IconIndex: 0; Tasks: desktopicon
+Name: "{userprograms}\Gestionador de archivos\Gestionador de archivos"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppExeName}"; IconIndex: 0
 
 [Run]
-Filename: "{app}\GestionadorDeArchivos.exe"; Description: "Iniciar Gestionador de archivos"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "Iniciar Gestionador de archivos"; Flags: postinstall nowait skipifsilent
