@@ -40,6 +40,10 @@ CATEGORY_EMPTY_MESSAGES = {
     "duplicates": "No se encuentran archivos duplicados",
     "untagged": "No se encuentran archivos sin etiquetas",
 }
+GRID_CARD_ROW_HEIGHT = 260
+GRID_ROW_GAP = 8
+GRID_ROW_PITCH = GRID_CARD_ROW_HEIGHT + GRID_ROW_GAP
+GRID_PRELOAD_ROWS = 1
 
 
 COLORS = {
@@ -103,6 +107,13 @@ class GestionadorArchivosApp(ctk.CTk):
         self.selected_song_paths = set()
         self._visible_songs = {}
         self._preview_images = {}
+        self._grid_cards = {}
+        self._grid_selection_buttons = {}
+        self._grid_rows = {}
+        self._grid_row_windows = {}
+        self._grid_songs = []
+        self._visible_selected_count = 0
+        self._duplicate_paths = set()
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("green")
@@ -606,13 +617,31 @@ class GestionadorArchivosApp(ctk.CTk):
         self.tree.bind("<Button-1>", self.handle_song_click, add=True)
         scrollbar_y.grid(row=0, column=1, sticky="ns")
         scrollbar_x.grid(row=1, column=0, sticky="ew")
-        self.grid_view = ctk.CTkScrollableFrame(
+        self.grid_view = ctk.CTkFrame(
             table_frame,
             fg_color=COLORS["background"],
             corner_radius=0,
         )
+        self.grid_view.grid_rowconfigure(0, weight=1)
+        self.grid_view.grid_columnconfigure(0, weight=1)
+        self.grid_canvas = tk.Canvas(
+            self.grid_view,
+            background=COLORS["background"],
+            highlightthickness=0,
+            borderwidth=0,
+            yscrollincrement=30,
+        )
+        self.grid_canvas.grid(row=0, column=0, sticky="nsew")
+        self.grid_scrollbar = ttk.Scrollbar(
+            self.grid_view,
+            orient="vertical",
+            command=self.grid_canvas.yview,
+        )
+        self.grid_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.grid_canvas.configure(yscrollcommand=self._on_grid_scroll)
         self._grid_render_columns = 0
-        self.grid_view.bind("<Configure>", self._on_grid_resize, add="+")
+        self.grid_canvas.bind("<Configure>", self._on_grid_resize, add="+")
+        self.bind_all("<MouseWheel>", self._on_grid_mousewheel, add="+")
         self.grid_view.grid(row=0, column=0, columnspan=2, sticky="nsew")
         self.grid_view.grid_remove()
         self.empty_state_label = ctk.CTkLabel(
@@ -842,6 +871,7 @@ class GestionadorArchivosApp(ctk.CTk):
             for group in self.duplicates + self.possible_duplicates
             for song in group
         }
+        self._duplicate_paths = duplicate_paths
         if self._active_filter == "duplicates":
             songs = [song for song in self.songs if song.path in duplicate_paths]
         elif self._active_filter == "untagged":
@@ -888,9 +918,7 @@ class GestionadorArchivosApp(ctk.CTk):
             )
             tag = "duplicate" if duplicate else "untagged" if untagged else "ready"
             self._visible_songs[str(song.path)] = song
-            if self._view_mode == "Cuadrícula":
-                self._create_song_card(song, duplicate=duplicate, untagged=untagged)
-            else:
+            if self._view_mode != "Cuadrícula":
                 self.tree.insert(
                     "",
                     "end",
@@ -911,6 +939,9 @@ class GestionadorArchivosApp(ctk.CTk):
         if self._view_mode == "Cuadrícula":
             self.tree.grid_remove()
             self.grid_view.grid()
+            self._grid_songs = songs
+            self._update_grid_scroll_region(reset_position=True)
+            self._render_grid_viewport()
             self._render_empty_state(songs)
         else:
             self.grid_view.grid_remove()
@@ -918,32 +949,20 @@ class GestionadorArchivosApp(ctk.CTk):
             self._render_empty_state(songs)
 
         visible_paths = {song.path for song in songs}
-        all_visible_selected = bool(songs) and visible_paths.issubset(
-            self.selected_song_paths
-        )
-        self.select_all_button.configure(
-            text="☑  Seleccionar todos" if all_visible_selected
-            else "☐  Seleccionar todos"
-        )
+        self._visible_selected_count = len(visible_paths & self.selected_song_paths)
+        self._update_selection_summary(len(visible_paths))
 
         if hasattr(self, "table_summary"):
             self.table_summary.configure(
                 text=f"{len(songs):,} mostrados  ·  "
-                f"{len(visible_paths & self.selected_song_paths):,} seleccionados"
+                f"{self._visible_selected_count:,} seleccionados"
             )
         if hasattr(self, "library_count"):
             self.library_count.configure(text=f"▣  Todos los archivos       {len(self.songs):,}")
 
-    def _create_song_card(self, song, duplicate=False, untagged=False):
-        card_index = len(self.grid_view.winfo_children())
-        available_width = max(1, self.grid_view.master.winfo_width())
-        columns = max(1, min(4, available_width // 250))
-        self._grid_render_columns = columns
-        for column in range(columns):
-            self.grid_view.grid_columnconfigure(column, weight=1, uniform="file_cards")
-
+    def _create_song_card(self, song, parent, column, duplicate=False, untagged=False):
         card = ctk.CTkFrame(
-            self.grid_view,
+            parent,
             fg_color=COLORS["surface"],
             border_width=2 if song.path in self.selected_song_paths else 1,
             border_color=(
@@ -958,14 +977,14 @@ class GestionadorArchivosApp(ctk.CTk):
             corner_radius=9,
         )
         card.grid(
-            row=card_index // columns,
-            column=card_index % columns,
+            row=0,
+            column=column,
             sticky="nsew",
             padx=6,
             pady=6,
         )
         card.grid_columnconfigure(0, weight=1)
-        card.bind("<Button-1>", lambda _event, path=song.path: self.toggle_song_selection(path))
+        self._grid_cards[song.path] = card
 
         header = ctk.CTkFrame(card, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=9, pady=(8, 4))
@@ -981,6 +1000,7 @@ class GestionadorArchivosApp(ctk.CTk):
             text_color=COLORS["lime"] if selected else COLORS["muted"],
         )
         selection.pack(side="left")
+        self._grid_selection_buttons[song.path] = selection
         extension = song.path.suffix.lstrip(".").upper() or "ARCHIVO"
         ctk.CTkLabel(
             header,
@@ -1013,10 +1033,6 @@ class GestionadorArchivosApp(ctk.CTk):
         if preview_image:
             image_label = ctk.CTkLabel(preview, text="", image=preview_image)
             image_label.pack(fill="both", expand=True, padx=4, pady=4)
-            image_label.bind(
-                "<Button-1>",
-                lambda _event, path=song.path: self.toggle_song_selection(path),
-            )
         else:
             ctk.CTkLabel(
                 preview,
@@ -1075,11 +1091,112 @@ class GestionadorArchivosApp(ctk.CTk):
     def _on_grid_resize(self, _event=None):
         if self._view_mode != "Cuadrícula":
             return
-        available_width = max(1, self.grid_view.master.winfo_width())
+        available_width = max(1, self.grid_canvas.winfo_width())
         columns = max(1, min(4, available_width // 250))
-        if columns != self._grid_render_columns:
-            self._grid_render_columns = columns
-            self.after_idle(self.render_songs)
+        if columns == self._grid_render_columns:
+            for window in self._grid_row_windows.values():
+                self.grid_canvas.itemconfigure(window, width=available_width)
+            self._render_grid_viewport()
+            return
+
+        self._grid_render_columns = columns
+        self._clear_grid_rows()
+        self._update_grid_scroll_region()
+        self._render_grid_viewport()
+
+    def _update_grid_scroll_region(self, reset_position=False):
+        width = max(1, self.grid_canvas.winfo_width())
+        columns = self._grid_render_columns or max(1, min(4, width // 250))
+        self._grid_render_columns = columns
+        row_count = (len(self._grid_songs) + columns - 1) // columns
+        total_height = max(1, row_count * GRID_ROW_PITCH)
+        self.grid_canvas.configure(scrollregion=(0, 0, width, total_height))
+        for row, window in self._grid_row_windows.items():
+            self.grid_canvas.coords(window, 0, row * GRID_ROW_PITCH)
+            self.grid_canvas.itemconfigure(window, width=width)
+        if reset_position:
+            self.grid_canvas.yview_moveto(0)
+
+    def _on_grid_scroll(self, first, last):
+        self.grid_scrollbar.set(first, last)
+        if self._view_mode == "Cuadrícula":
+            self._render_grid_viewport()
+
+    def _on_grid_mousewheel(self, event):
+        if self._view_mode != "Cuadrícula" or not self.grid_view.winfo_ismapped():
+            return
+        widget = event.widget
+        while widget is not None:
+            if widget is self.grid_canvas:
+                units = -int(event.delta / 120)
+                if units == 0:
+                    units = -1 if event.delta > 0 else 1
+                self.grid_canvas.yview_scroll(units * 3, "units")
+                return "break"
+            widget = widget.master
+
+    def _render_grid_viewport(self):
+        if self._view_mode != "Cuadrícula" or not self._grid_songs:
+            return
+        width = max(1, self.grid_canvas.winfo_width())
+        columns = self._grid_render_columns or max(1, min(4, width // 250))
+        row_count = (len(self._grid_songs) + columns - 1) // columns
+        top = max(0, self.grid_canvas.canvasy(0))
+        bottom = top + max(1, self.grid_canvas.winfo_height())
+        first_row = max(0, int(top // GRID_ROW_PITCH) - GRID_PRELOAD_ROWS)
+        last_row = min(
+            row_count,
+            int(bottom // GRID_ROW_PITCH) + GRID_PRELOAD_ROWS + 1,
+        )
+        for row in range(first_row, last_row):
+            if row not in self._grid_rows:
+                self._create_grid_row(row, columns, width)
+
+    def _create_grid_row(self, row, columns, width):
+        frame = ctk.CTkFrame(
+            self.grid_canvas,
+            fg_color=COLORS["background"],
+            corner_radius=0,
+            width=width,
+            height=GRID_CARD_ROW_HEIGHT,
+        )
+        frame.grid_propagate(False)
+        frame.grid_rowconfigure(0, weight=1)
+        for column in range(columns):
+            frame.grid_columnconfigure(column, weight=1, uniform="file_cards")
+
+        first_index = row * columns
+        row_songs = self._grid_songs[first_index:first_index + columns]
+        for column, song in enumerate(row_songs):
+            self._create_song_card(
+                song,
+                frame,
+                column,
+                duplicate=song.path in self._duplicate_paths,
+                untagged=any(
+                    value.casefold() in {"desconocido", "unknown"}
+                    for value in (song.title, song.artist, song.album, song.genre)
+                ),
+            )
+
+        window = self.grid_canvas.create_window(
+            (0, row * GRID_ROW_PITCH),
+            window=frame,
+            anchor="nw",
+            width=width,
+            height=GRID_CARD_ROW_HEIGHT,
+        )
+        self._grid_rows[row] = frame
+        self._grid_row_windows[row] = window
+
+    def _clear_grid_rows(self):
+        for row in self._grid_rows.values():
+            row.destroy()
+        self._grid_rows.clear()
+        self._grid_row_windows.clear()
+        self._grid_cards.clear()
+        self._grid_selection_buttons.clear()
+        self.grid_canvas.delete("all")
 
     def _render_empty_state(self, songs):
         if songs:
@@ -1095,11 +1212,62 @@ class GestionadorArchivosApp(ctk.CTk):
         self.empty_state_label.lift()
 
     def toggle_song_selection(self, path):
-        if path in self.selected_song_paths:
+        was_selected = path in self.selected_song_paths
+        if was_selected:
             self.selected_song_paths.remove(path)
         else:
             self.selected_song_paths.add(path)
+        if self._view_mode == "Cuadrícula" and path in self._grid_cards:
+            self._visible_selected_count += -1 if was_selected else 1
+            self._update_grid_card_selection(path)
+            self._update_selection_summary(len(self._visible_songs))
+            self.table_summary.configure(
+                text=f"{len(self._visible_songs):,} mostrados  ·  "
+                f"{self._visible_selected_count:,} seleccionados"
+            )
+            return
         self.render_songs()
+
+    def _update_grid_card_selection(self, path):
+        card = self._grid_cards.get(path)
+        selection = self._grid_selection_buttons.get(path)
+        if card is None or selection is None:
+            return
+
+        selected = path in self.selected_song_paths
+        song = self._visible_songs[str(path)]
+        duplicate = path in self._duplicate_paths
+        untagged = any(
+            value.casefold() in {"desconocido", "unknown"}
+            for value in (song.title, song.artist, song.album, song.genre)
+        )
+        card.configure(
+            border_width=2 if selected else 1,
+            border_color=(
+                COLORS["lime"]
+                if selected
+                else COLORS["amber"]
+                if duplicate
+                else COLORS["coral"]
+                if untagged
+                else COLORS["border"]
+            ),
+        )
+        selection.configure(
+            text="☑" if selected else "☐",
+            fg_color=COLORS["selection"] if selected else COLORS["surface_alt"],
+            text_color=COLORS["lime"] if selected else COLORS["muted"],
+        )
+
+    def _update_selection_summary(self, visible_count):
+        all_selected = (
+            visible_count > 0 and self._visible_selected_count == visible_count
+        )
+        self.select_all_button.configure(
+            text="☑  Seleccionar todos"
+            if all_selected
+            else "☐  Seleccionar todos"
+        )
 
     def toggle_select_all_visible(self):
         visible_paths = {song.path for song in self._visible_songs.values()}
@@ -1107,6 +1275,18 @@ class GestionadorArchivosApp(ctk.CTk):
             self.selected_song_paths.difference_update(visible_paths)
         else:
             self.selected_song_paths.update(visible_paths)
+        if self._view_mode == "Cuadrícula":
+            self._visible_selected_count = len(
+                visible_paths & self.selected_song_paths
+            )
+            for path in visible_paths:
+                self._update_grid_card_selection(path)
+            self._update_selection_summary(len(visible_paths))
+            self.table_summary.configure(
+                text=f"{len(visible_paths):,} mostrados  ·  "
+                f"{self._visible_selected_count:,} seleccionados"
+            )
+            return
         self.render_songs()
 
     def handle_song_click(self, event):
@@ -1139,8 +1319,10 @@ class GestionadorArchivosApp(ctk.CTk):
     def clear_table(self):
         for item in self.tree.get_children():
             self.tree.delete(item)
-        for card in self.grid_view.winfo_children():
-            card.destroy()
+        self._grid_songs = []
+        self._clear_grid_rows()
+        if hasattr(self, "grid_canvas"):
+            self.grid_canvas.configure(scrollregion=(0, 0, 1, 1))
 
     def open_organization_rules(self):
         if not self.songs:

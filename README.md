@@ -11,6 +11,8 @@ El lema de la aplicación es **“Tus carpetas ordenadas en un clic. Olvídate d
 - Distingue copias exactas mediante SHA-256 de posibles repetidos con artista, canción y álbum coincidentes.
 - Permite filtrar todas las canciones, repetidas y canciones con etiquetas ausentes.
 - Permite cambiar entre lista y cuadrícula; las tarjetas muestran la carátula incrustada cuando existe.
+- En cuadrícula, seleccionar un archivo actualiza únicamente su tarjeta, sin volver a dibujar la biblioteca.
+- La cuadrícula crea sus tarjetas por filas cuando se acerca el desplazamiento y conserva las ya creadas para no reconstruirlas al volver.
 - Las categorías de video, imágenes, documentos y archivos sin clasificar se pueden seleccionar y muestran un estado vacío mientras no estén habilitadas.
 - La tarjeta «Regla de orden» abre ajustes de vista, orden y reglas de organización.
 - Previsualiza la organización antes de confirmar y permite incluir el género como criterio opcional.
